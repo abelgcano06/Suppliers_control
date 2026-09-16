@@ -8,6 +8,51 @@ y abres `/docs`, puedes probar cada llamada desde el navegador antes de armar el
 
 ---
 
+## 0. Antes de nada: cómo alcanza Power Automate al portal
+
+**Resuelve esto primero.** Define todo lo demás y es el punto que la propuesta original
+no menciona.
+
+Power Automate corre en la nube de Microsoft. El portal corre dentro de la red del área.
+Para que un flujo pueda llamar a `/api/v1`, tiene que poder alcanzarlo, y una laptop en
+la red interna no es alcanzable desde internet. Hay dos caminos, y hay que escoger uno:
+
+### Opción A — Publicar el portal (recomendada)
+
+El portal queda en un servidor del área con un nombre que Power Automate alcance, con
+HTTPS. Los flujos usan la acción **HTTP** contra `/api/v1`, tal como está descrito en
+las secciones 2 y 3 de esta guía.
+
+- A favor: toda la lógica de seguridad vive en el portal. Las reglas de aislamiento
+  entre proveedores, el catálogo cerrado de status y la protección de los campos del
+  sistema se aplican solas, y están cubiertas por pruebas.
+- En contra: hay que publicar un servicio y pedirle a Sistemas el nombre y el
+  certificado.
+
+### Opción B — On-premises data gateway contra SQL Server
+
+Es lo que la propuesta asume sin decirlo al pedir el conector premium de SQL Server:
+Sistemas instala el *on-premises data gateway* y los flujos hablan directo con la base
+de datos, sin pasar por la API del portal.
+
+- A favor: no se publica nada hacia afuera.
+- En contra: **los flujos se saltan todas las validaciones del portal.** Cada regla de
+  seguridad habría que reimplementarla dentro del flujo, a mano, y ahí no hay pruebas
+  que la respalden. Si tomas este camino, al menos escribe en las tablas por medio de
+  procedimientos almacenados que repliquen las validaciones de `app/services/sync.py`.
+
+### Qué pedirle a Sistemas en cada caso
+
+A los tres requerimientos de la propuesta (invitados externos en un sitio, licencia
+Premium, y nada más) hay que agregarle **uno** de estos dos:
+
+| Opción | Requerimiento extra |
+|---|---|
+| A | Publicar el portal en un servidor del área, con HTTPS y un nombre alcanzable por Power Automate |
+| B | Instalar y administrar el on-premises data gateway |
+
+---
+
 ## 1. El sitio de SharePoint
 
 Crea **un sitio de comunicación** llamado `Proveedores`. Un solo sitio, no todo el
@@ -16,6 +61,33 @@ tenant — es el alcance que se le pide a Sistemas.
 En ese sitio, **una lista por proveedor**: `Ordenes - PROV-A`, `Ordenes - PROV-B`, etc.
 El nombre que uses aquí es el que capturas en el portal, en Proveedores → Editar →
 *Lista de SharePoint*.
+
+### Crear las listas con el script
+
+No las hagas a mano. El repositorio trae un script que las crea con las columnas
+correctas, leyendo los proveedores del propio portal:
+
+```powershell
+Install-Module PnP.PowerShell -Scope CurrentUser
+
+# Primero en seco, para ver qué haría:
+.\scripts\crear_listas_sharepoint.ps1 `
+    -SitioUrl https://TUTENANT.sharepoint.com/sites/Proveedores `
+    -UrlPortal http://localhost:8000 -ClaveApi "tu-clave" -Simular
+
+# Y ya en serio:
+.\scripts\crear_listas_sharepoint.ps1 `
+    -SitioUrl https://TUTENANT.sharepoint.com/sites/Proveedores `
+    -UrlPortal http://localhost:8000 -ClaveApi "tu-clave"
+```
+
+Es idempotente: se puede correr las veces que haga falta, no borra columnas ni datos.
+Agrega las columnas `Precio` y `Moneda` solo a los proveedores que tengan el precio
+autorizado en el portal.
+
+**El script no toca permisos a propósito.** Un error ahí es justo lo que expondría la
+información de un proveedor a otro, así que eso se hace a mano y revisado. Al terminar,
+el script imprime los pasos que faltan.
 
 ### Columnas de cada lista
 
@@ -36,6 +108,10 @@ El nombre que uses aquí es el que capturas en el portal, en Proveedores → Edi
 `Precio` y `Moneda` solo se agregan a las listas de los proveedores que tengan
 *Publicar precio* activado en el portal. Para el resto, el campo ni siquiera viaja en el
 payload de la API.
+
+> **`Clave` es la columna `Title` renombrada.** SharePoint obliga a tener una columna
+> `Title`, así que el script la reutiliza como clave de la línea de orden. En las
+> expresiones de Power Automate se referencia como **`Title`**, no como `Clave`.
 
 > SharePoint no tiene columnas de solo lectura por usuario. La protección real es la de
 > la regla 2 del README: **el portal ignora cualquier campo del sistema que le manden y

@@ -143,8 +143,17 @@ Exactamente lo que dice la propuesta, nada más:
 
 ## Conectar SharePoint y Power Automate
 
-La guía paso a paso, con las columnas de la lista y los dos flujos, está en
-[`docs/power-automate.md`](docs/power-automate.md).
+La guía paso a paso está en [`docs/power-automate.md`](docs/power-automate.md): las
+columnas de la lista, los dos flujos y la tabla de rechazos que se ven en la práctica.
+
+Las listas no se crean a mano — `scripts/crear_listas_sharepoint.ps1` las genera leyendo
+los proveedores del propio portal, y es idempotente. No toca permisos a propósito: ese
+paso se hace revisado, porque un error ahí es justo lo que expondría la información de
+un proveedor a otro.
+
+**Antes de armar ningún flujo**, resuelve la sección 0 de esa guía: Power Automate corre
+en la nube y el portal corre en la red interna, así que hay que decidir cómo se alcanzan.
+Esa decisión agrega un cuarto requerimiento a la lista de Sistemas.
 
 ## Lo que este esquema no hace
 
@@ -171,6 +180,7 @@ app/
 scripts/
   generar_reporte_ejemplo.py   Excel de ejemplo con el formato de compras
   seed_demo.py                 Escenario completo de demostración
+  crear_listas_sharepoint.ps1  Crea las listas de SharePoint (PnP PowerShell)
 tests/                   82 pruebas
 docs/power-automate.md   Configuración de SharePoint y los dos flujos
 ```
