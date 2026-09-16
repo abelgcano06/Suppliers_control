@@ -128,12 +128,10 @@ def enviar(client, supplier_code, updates):
     )
 
 
-def test_el_proveedor_actualiza_status_fecha_y_comentario(client, datos):
-    promesa = (date.today() + timedelta(days=10)).isoformat()
+def test_el_proveedor_actualiza_el_status(client, datos):
     respuesta = enviar(client, "PROV-A", [{
         "po_number": "OC-1001", "line_number": 1,
-        "status": "En proceso", "promised_date": promesa,
-        "supplier_comment": "En fabricacion", "changed_by": "invitado@prov-a.mx",
+        "status": "En proceso", "changed_by": "invitado@prov-a.mx",
     }])
 
     assert respuesta.status_code == 200
@@ -145,9 +143,29 @@ def test_el_proveedor_actualiza_status_fecha_y_comentario(client, datos):
     )
     datos.refresh(orden)
     assert orden.status is OrderStatus.EN_PROCESO
-    assert orden.promised_date.isoformat() == promesa
-    assert orden.supplier_comment == "En fabricacion"
     assert orden.last_supplier_update_by == "invitado@prov-a.mx"
+
+
+def test_el_status_es_lo_unico_que_el_proveedor_puede_cambiar(client, datos):
+    """Aunque el cuerpo traiga mas campos, solo se aplica el status."""
+    cuerpo = enviar(client, "PROV-A", [{
+        "po_number": "OC-1001", "line_number": 1, "status": "Enviada",
+        # Nada de esto debe entrar: no es del proveedor.
+        "promised_date": (date.today() + timedelta(days=10)).isoformat(),
+        "supplier_comment": "quiero escribir aqui",
+        "internal_note": "y aqui tambien",
+    }]).json()
+
+    assert cuerpo["applied"] == 1
+    assert cuerpo["results"][0]["changed_fields"] == ["status"]
+
+    orden = datos.scalar(
+        select(PurchaseOrder).where(PurchaseOrder.po_number == "OC-1001", PurchaseOrder.line_number == 1)
+    )
+    datos.refresh(orden)
+    assert orden.status is OrderStatus.ENVIADA
+    assert orden.promised_date is None
+    assert orden.internal_note is None
 
 
 def test_un_proveedor_no_puede_tocar_la_orden_de_otro(client, datos):
@@ -182,6 +200,15 @@ def test_el_proveedor_no_puede_poner_pendiente(client, datos):
 
     assert cuerpo["rejected"] == 1
     assert "lo asigna el sistema" in cuerpo["results"][0]["message"]
+
+
+def test_la_bajada_no_ofrece_campos_que_el_proveedor_no_controla(client, datos):
+    """El payload que va a SharePoint no trae fecha promesa ni nota interna."""
+    ordenes = client.get("/api/v1/suppliers/PROV-A/orders", headers=CABECERA).json()
+    assert all("promised_date" not in o for o in ordenes)
+    assert all("supplier_comment" not in o for o in ordenes)
+    assert all("internal_note" not in o for o in ordenes)
+    assert all("status" in o for o in ordenes)
 
 
 def test_los_campos_del_sistema_se_ignoran_aunque_los_mande_el_flujo(client, datos):
@@ -239,14 +266,14 @@ def test_reenviar_el_mismo_valor_no_genera_ruido(client, datos):
 def test_cada_cambio_del_proveedor_queda_en_el_historial(client, datos):
     enviar(client, "PROV-A", [{
         "po_number": "OC-1001", "line_number": 1, "status": "Enviada",
-        "promised_date": (date.today() + timedelta(days=3)).isoformat(),
-        "supplier_comment": "Va en camino", "changed_by": "invitado@prov-a.mx",
+        "changed_by": "invitado@prov-a.mx",
     }])
 
     cambios = datos.scalars(select(OrderChange)).all()
     del_proveedor = [c for c in cambios if c.source is ChangeSource.PROVEEDOR]
-    assert {c.field for c in del_proveedor} == {"status", "promised_date", "supplier_comment"}
+    assert {c.field for c in del_proveedor} == {"status"}
     assert all(c.actor == "invitado@prov-a.mx" for c in del_proveedor)
+    assert del_proveedor[0].new_value == "Enviada"
 
 
 def test_lote_de_proveedor_inexistente(client, datos):

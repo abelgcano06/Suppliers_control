@@ -29,15 +29,42 @@
 
   <div class="panel">
     <h2>Respuesta del proveedor</h2>
-    <p class="subtitulo">Lo unico que el proveedor puede capturar en su lista de SharePoint.</p>
+    <p class="subtitulo">
+      El status es lo único que el proveedor cambia, en la lista de SharePoint que le
+      corresponde a él.
+    </p>
     <dl class="datos">
-      <dt>Status</dt><dd>{{ orden.status.value }}</dd>
-      <dt>Fecha promesa</dt><dd>{{ orden.promised_date.strftime('%d/%m/%Y') if orden.promised_date else '—' }}</dd>
-      <dt>Comentario</dt><dd>{{ orden.supplier_comment or '—' }}</dd>
-      <dt>Ultima respuesta</dt><dd>{{ orden.last_supplier_update_at.strftime('%d/%m/%Y %H:%M') ~ ' UTC' if orden.last_supplier_update_at else 'Sin respuesta' }}</dd>
-      <dt>Capturo</dt><dd>{{ orden.last_supplier_update_by or '—' }}</dd>
+      <dt>Status</dt><dd><strong>{{ orden.status.value }}</strong></dd>
+      <dt>Última respuesta</dt><dd>{{ orden.last_supplier_update_at.strftime('%d/%m/%Y %H:%M') ~ ' UTC' if orden.last_supplier_update_at else 'Sin respuesta' }}</dd>
+      <dt>Quién</dt><dd>{{ orden.last_supplier_update_by or '—' }}</dd>
     </dl>
   </div>
+</div>
+
+<div class="panel">
+  <h2>Seguimiento interno</h2>
+  <p class="subtitulo">
+    Lo captura mantenimiento, normalmente con lo que el proveedor dijo por teléfono.
+    Esto no se publica: no aparece en la lista del proveedor.
+  </p>
+  <form method="post" action="/ordenes/{{ orden.id }}/seguimiento" class="filtros">
+    <div class="campo">
+      <label for="fecha_promesa">Fecha promesa</label>
+      <input type="date" name="fecha_promesa" id="fecha_promesa"
+             value="{{ orden.promised_date.isoformat() if orden.promised_date else '' }}">
+    </div>
+    <div class="campo" style="flex:1 1 320px">
+      <label for="nota">Nota</label>
+      <input type="text" name="nota" id="nota" style="width:100%"
+             value="{{ orden.internal_note or '' }}"
+             placeholder="Habló el proveedor: material detenido en aduana...">
+    </div>
+    <div class="campo">
+      <label for="capturado_por">Quién captura</label>
+      <input type="text" name="capturado_por" id="capturado_por" placeholder="Tu nombre">
+    </div>
+    <button class="boton" type="submit">Guardar</button>
+  </form>
 </div>
 
 <div class="panel">

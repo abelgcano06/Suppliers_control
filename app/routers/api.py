@@ -76,7 +76,7 @@ def supplier_updates(
     payload: SupplierUpdateBatchIn,
     db: Session = Depends(get_db),
 ) -> SupplierUpdateBatchOut:
-    """Recibe los cambios que los proveedores capturaron en su lista.
+    """Recibe el status que los proveedores seleccionaron en su lista.
 
     Cada cambio se valida por separado: uno invalido no cancela el resto del lote.
     """
@@ -102,8 +102,6 @@ def supplier_updates(
                 po_number=cambio.po_number,
                 line_number=cambio.line_number,
                 status=cambio.status,
-                promised_date=cambio.promised_date,
-                supplier_comment=cambio.supplier_comment,
                 changed_by=cambio.changed_by,
                 changed_at=cambio.changed_at,
             )

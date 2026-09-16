@@ -20,6 +20,7 @@ from sqlalchemy import select  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.models import OrderStatus, PurchaseOrder, Supplier, utcnow  # noqa: E402
 from app.services.excel_import import import_orders  # noqa: E402
+from app.services.seguimiento import actualizar_seguimiento  # noqa: E402
 from app.services.sync import apply_supplier_update  # noqa: E402
 from scripts.generar_reporte_ejemplo import generar  # noqa: E402
 
@@ -32,8 +33,10 @@ RESPUESTAS = [
     (None, 0.15, None),  # el proveedor no contesto
 ]
 
-COMENTARIOS = {
-    OrderStatus.RECIBIDA: "Orden recibida, confirmamos disponibilidad esta semana.",
+# Notas que captura mantenimiento despues de hablarle al proveedor. El proveedor
+# no las escribe: el solo selecciona el status en su lista.
+NOTAS_INTERNAS = {
+    OrderStatus.RECIBIDA: "Hablo el proveedor: confirma disponibilidad esta semana.",
     OrderStatus.EN_PROCESO: "En fabricacion, sale de planta segun fecha promesa.",
     OrderStatus.ENVIADA: "Embarcado con guia 7742-MX, llega por paqueteria.",
     OrderStatus.RETRASADA: "Material de importacion detenido en aduana.",
@@ -82,21 +85,27 @@ def main() -> None:
             status, _, dias = _elegir_respuesta()
             if status is None:
                 continue
-            promesa = (orden.required_date or hoy) + timedelta(days=dias or 0)
+            # 1. El proveedor selecciona el status en su lista de SharePoint.
             apply_supplier_update(
                 db,
                 supplier=orden.supplier,
                 po_number=orden.po_number,
                 line_number=orden.line_number,
                 status=status.value,
-                promised_date=promesa,
-                supplier_comment=COMENTARIOS[status],
                 changed_by=f"invitado@{orden.supplier.code.lower()}.mx",
                 changed_at=alta + timedelta(hours=random.randint(4, 140)),
             )
+            # 2. Mantenimiento captura en el portal lo que hablo con el proveedor.
+            actualizar_seguimiento(
+                db,
+                orden,
+                promised_date=(orden.required_date or hoy) + timedelta(days=dias or 0),
+                internal_note=NOTAS_INTERNAS[status],
+                actor="demo@tmmbc",
+            )
             aplicados += 1
         db.commit()
-        print(f"{aplicados} ordenes con respuesta simulada del proveedor.")
+        print(f"{aplicados} ordenes con status del proveedor y seguimiento interno.")
         print("Listo. Arranca el portal con: uvicorn app.main:app --reload")
     finally:
         db.close()

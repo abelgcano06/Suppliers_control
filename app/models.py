@@ -5,8 +5,10 @@ Reglas que el modelo hace explicitas (seccion "Reglas de seguridad" del concepto
 * Los campos de la orden que controla el sistema (numero, parte, cantidad,
   precio, fecha requerida) vienen del Excel de compras y se sobreescriben en
   cada carga.
-* Los campos que controla el proveedor (status, fecha promesa, comentario) se
-  conservan entre cargas y solo cambian por la sincronizacion de SharePoint.
+* Lo UNICO que controla el proveedor es el status. Se conserva entre cargas y
+  solo cambia por la sincronizacion de SharePoint.
+* La fecha promesa y la nota son internas: las captura mantenimiento en el
+  portal, normalmente con lo que el proveedor dijo por telefono.
 * Todo cambio queda registrado en `order_changes` con quien, cuando y desde donde.
 """
 
@@ -108,14 +110,16 @@ class PurchaseOrder(Base):
     currency: Mapped[str | None] = mapped_column(String(10), default=None)
     required_date: Mapped[date | None] = mapped_column(Date, default=None)
 
-    # --- Campos que controla el proveedor (se conservan entre cargas) --------
+    # --- Lo unico que controla el proveedor ----------------------------------
     status: Mapped[OrderStatus] = mapped_column(
         Enum(OrderStatus, native_enum=False, length=20), default=OrderStatus.PENDIENTE
     )
-    promised_date: Mapped[date | None] = mapped_column(Date, default=None)
-    supplier_comment: Mapped[str | None] = mapped_column(Text, default=None)
     last_supplier_update_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     last_supplier_update_by: Mapped[str | None] = mapped_column(String(200), default=None)
+
+    # --- Seguimiento interno (lo captura mantenimiento, no el proveedor) ------
+    promised_date: Mapped[date | None] = mapped_column(Date, default=None)
+    internal_note: Mapped[str | None] = mapped_column(Text, default=None)
 
     # --- Control interno -----------------------------------------------------
     # Una orden se cierra cuando deja de aparecer en el reporte de compras.

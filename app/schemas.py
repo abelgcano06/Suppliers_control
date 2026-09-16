@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,24 +32,20 @@ class OrderOut(BaseModel):
     currency: str | None = None
     required_date: str | None = None
     status: str
-    promised_date: str | None = None
-    supplier_comment: str | None = None
     is_closed: bool
     updated_at: str | None = None
 
 
 class SupplierUpdateIn(BaseModel):
-    """Un cambio capturado por el proveedor en su lista.
+    """El status que el proveedor selecciono en su lista.
 
-    Solo se aceptan estos tres campos editables. Cualquier otro dato que mande
-    el flujo se ignora, y la siguiente bajada restaura los campos del sistema.
+    Es lo UNICO que se acepta de un proveedor. Cualquier otro dato que venga en
+    el cuerpo se ignora, y la siguiente bajada restaura los campos del sistema.
     """
 
     po_number: str = Field(min_length=1, max_length=50)
     line_number: int = Field(ge=0)
     status: str | None = None
-    promised_date: date | None = None
-    supplier_comment: str | None = Field(default=None, max_length=2000)
     changed_by: str | None = Field(default=None, max_length=200)
     changed_at: datetime | None = None
 

@@ -16,11 +16,18 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.db import get_db
-from app.models import ChangeSource, OrderChange, OrderStatus, PurchaseOrder, Supplier, UploadBatch
+from app.models import (
+    ChangeSource,
+    OrderChange,
+    OrderStatus,
+    PurchaseOrder,
+    Supplier,
+    UploadBatch,
+)
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from app.services import dashboard, sharepoint
+from app.services import dashboard, seguimiento, sharepoint
 from app.services.excel_import import ExcelImportError, import_orders
 
 router = APIRouter(tags=["portal"])
@@ -101,6 +108,42 @@ def detalle_orden(order_id: int, request: Request, db: Session = Depends(get_db)
     return templates.TemplateResponse(request, "orden.html", _context(orden=orden))
 
 
+@router.post("/ordenes/{order_id}/seguimiento")
+def guardar_seguimiento(
+    order_id: int,
+    fecha_promesa: str = Form(""),
+    nota: str = Form(""),
+    capturado_por: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Fecha promesa y nota interna: las captura mantenimiento, no el proveedor."""
+    orden = db.get(PurchaseOrder, order_id)
+    if orden is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Orden no encontrada.")
+
+    texto = fecha_promesa.strip()
+    promesa = None
+    if texto:
+        try:
+            promesa = date.fromisoformat(texto)
+        except ValueError:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"'{texto}' no es una fecha valida. Usa el selector de fecha.",
+            )
+
+    seguimiento.actualizar_seguimiento(
+        db,
+        orden,
+        promised_date=promesa,
+        internal_note=nota,
+        actor=capturado_por.strip() or None,
+        limpiar_fecha=not texto,
+    )
+    db.commit()
+    return RedirectResponse(f"/ordenes/{order_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.get("/export.csv")
 def exportar_csv(
     proveedor: int | None = None,
@@ -126,7 +169,7 @@ def exportar_csv(
         [
             "Orden", "Linea", "Proveedor", "Parte", "Descripcion", "Cantidad", "Unidad",
             "Fecha requerida", "Status", "Fecha promesa", "Dias de retraso",
-            "Comentario del proveedor", "Ultima respuesta", "Cerrada",
+            "Nota interna", "Ultima respuesta", "Cerrada",
         ]
     )
     hoy = date.today()
@@ -140,7 +183,7 @@ def exportar_csv(
                 o.status.value,
                 o.promised_date.isoformat() if o.promised_date else "",
                 o.dias_de_retraso(hoy) if o.esta_retrasada(hoy) else 0,
-                o.supplier_comment or "",
+                o.internal_note or "",
                 o.last_supplier_update_at.isoformat(sep=" ", timespec="minutes")
                 if o.last_supplier_update_at else "",
                 "Si" if o.is_closed else "No",
@@ -336,7 +379,8 @@ def _excel_del_proveedor(supplier: Supplier, ordenes: list[PurchaseOrder]) -> by
                    "FechaRequerida"]
     if supplier.share_price:
         encabezados += ["Precio", "Moneda"]
-    encabezados += ["Status", "FechaPromesa", "Comentario"]
+    # Status es lo unico que el proveedor captura.
+    encabezados += ["Status"]
 
     hoja.append(encabezados)
     relleno = PatternFill("solid", fgColor="1F4E79")
@@ -354,10 +398,10 @@ def _excel_del_proveedor(supplier: Supplier, ordenes: list[PurchaseOrder]) -> by
         ]
         if supplier.share_price:
             fila += [float(o.unit_price) if o.unit_price is not None else None, o.currency or ""]
-        fila += [o.status.value, o.promised_date, o.supplier_comment or ""]
+        fila += [o.status.value]
         hoja.append(fila)
 
-    for columna, ancho in zip("ABCDEFGHIJKLM", (16, 12, 6, 14, 38, 10, 8, 15, 12, 8, 14, 14, 40)):
+    for columna, ancho in zip("ABCDEFGHIJK", (16, 12, 6, 14, 38, 10, 8, 15, 12, 8, 14)):
         hoja.column_dimensions[columna].width = ancho
     hoja.freeze_panes = "A2"
 

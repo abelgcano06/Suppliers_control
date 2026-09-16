@@ -3,12 +3,16 @@
 Sustituye por completo a Power Automate: el portal clasifica las ordenes por
 proveedor, crea la lista de cada uno si no existe y las publica el mismo.
 
+En la lista de cada proveedor hay UNA SOLA columna editable: Status. Todo lo
+demas lo escribe el portal. La fecha promesa y la nota interna no se publican:
+son del equipo de mantenimiento y nunca salen hacia SharePoint.
+
 Una sincronizacion hace dos cosas, SIEMPRE en este orden:
 
-1. BAJA lo que capturaron los proveedores (status, fecha promesa, comentario).
+1. BAJA el status que seleccionaron los proveedores.
 2. SUBE los campos del sistema, que asi quedan restaurados si alguien los edito.
 
-El orden importa: al reves, la subida borraria una respuesta recien capturada.
+El orden importa: al reves, la subida borraria un status recien seleccionado.
 
 Autenticacion: dos modos, y el que sirve depende de lo que permita el tenant.
 
@@ -65,10 +69,15 @@ COLUMNAS_PRECIO = [
     {"name": "Moneda", "text": {}},
 ]
 
-COLUMNAS_PROVEEDOR = [
-    {"name": "FechaPromesa", "dateTime": {"format": "dateOnly"}},
-    {"name": "Comentario", "text": {"allowMultipleLines": True}},
-]
+# Lo unico que el proveedor captura. Una columna, un clic.
+COLUMNA_STATUS = {
+    "name": "Status",
+    "choice": {
+        "choices": [],  # se llena con el catalogo al crear la lista
+        "displayAs": "dropDownMenu",
+        "allowTextEntry": False,
+    },
+}
 
 
 class SharePointError(Exception):
@@ -369,20 +378,13 @@ class SharePointSync:
         return None
 
     def _columnas_de(self, supplier: Supplier) -> list[dict]:
+        """Las columnas de la lista: todas del sistema, mas Status."""
         columnas = list(COLUMNAS_SISTEMA)
         if supplier.share_price:
             columnas += COLUMNAS_PRECIO
-        columnas.append(
-            {
-                "name": "Status",
-                "choice": {
-                    "choices": [s.value for s in OrderStatus.editable_por_proveedor()],
-                    "displayAs": "dropDownMenu",
-                    "allowTextEntry": False,
-                },
-            }
-        )
-        return columnas + COLUMNAS_PROVEEDOR
+        status = json.loads(json.dumps(COLUMNA_STATUS))  # copia, para no mutar la constante
+        status["choice"]["choices"] = [s.value for s in OrderStatus.editable_por_proveedor()]
+        return columnas + [status]
 
     def asegurar_lista(self, supplier: Supplier, resultado: ResultadoProveedor) -> str:
         """Devuelve el id de la lista del proveedor, creandola si hace falta."""
@@ -395,7 +397,7 @@ class SharePointSync:
                 {
                     "displayName": nombre,
                     "description": f"Ordenes abiertas de {supplier.name}. "
-                                   "Solo captura Status, FechaPromesa y Comentario.",
+                                   "Lo unico que hay que capturar es el Status.",
                     "columns": self._columnas_de(supplier),
                     "list": {"template": "genericList"},
                 },
@@ -429,6 +431,7 @@ class SharePointSync:
 
     def bajar(self, supplier: Supplier, elementos: dict[str, dict],
               resultado: ResultadoProveedor) -> None:
+        """Trae el status que selecciono el proveedor. Es lo unico que se baja."""
         for clave, elemento in elementos.items():
             campos = elemento.get("fields") or {}
             referencia = _partir_clave(clave)
@@ -448,8 +451,6 @@ class SharePointSync:
                     po_number=po_number,
                     line_number=line_number,
                     status=campos.get("Status") or None,
-                    promised_date=_a_fecha(campos.get("FechaPromesa")),
-                    supplier_comment=campos.get("Comentario"),
                     changed_by=autor,
                     changed_at=_a_momento(elemento.get("lastModifiedDateTime")),
                 )
@@ -493,19 +494,15 @@ class SharePointSync:
             if elemento is None:
                 # Al crear si se manda el status, para que la columna no nazca vacia.
                 campos["Status"] = orden.status.value
-                if orden.promised_date:
-                    campos["FechaPromesa"] = _de_fecha(orden.promised_date)
-                if orden.supplier_comment:
-                    campos["Comentario"] = orden.supplier_comment
                 self.client.post(
                     f"/sites/{self.site_id}/lists/{lista_id}/items", {"fields": campos}
                 )
                 resultado.creados += 1
                 continue
 
-            # Al actualizar NO se tocan Status, FechaPromesa ni Comentario: ahi vive
-            # la respuesta del proveedor. Solo se reescriben los campos del sistema,
-            # que es lo que restaura cualquier edicion indebida.
+            # Al actualizar NO se toca Status: ahi vive lo que selecciono el
+            # proveedor. Solo se reescriben los campos del sistema, que es lo que
+            # restaura cualquier edicion indebida.
             if _hay_diferencia(elemento.get("fields") or {}, campos):
                 self.client.patch(
                     f"/sites/{self.site_id}/lists/{lista_id}/items/{elemento['id']}/fields",

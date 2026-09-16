@@ -101,13 +101,14 @@ el script imprime los pasos que faltan.
 | `Cantidad` | Número | Sistema | Solo lectura |
 | `Unidad` | Texto | Sistema | Solo lectura |
 | `FechaRequerida` | Fecha | Sistema | Solo lectura |
-| **`Status`** | **Elección** | **Proveedor** | **Editable** |
-| **`FechaPromesa`** | **Fecha** | **Proveedor** | **Editable** |
-| **`Comentario`** | **Texto (varias líneas)** | **Proveedor** | **Editable** |
+| **`Status`** | **Elección** | **Proveedor** | **Editable — la única** |
 
 `Precio` y `Moneda` solo se agregan a las listas de los proveedores que tengan
 *Publicar precio* activado en el portal. Para el resto, el campo ni siquiera viaja en el
 payload de la API.
+
+**El proveedor solo cambia el status.** La fecha promesa y la nota son internas: las
+captura mantenimiento en el portal y nunca se publican en SharePoint.
 
 > **`Clave` es la columna `Title` renombrada.** SharePoint obliga a tener una columna
 > `Title`, así que el script la reutiliza como clave de la línea de orden. En las
@@ -174,8 +175,8 @@ Recurrencia (cada 1 hora)
          │     FechaRequerida, Status (el que viene del portal)
          │
          ├─ Si SÍ existe y is_closed = false  → Actualizar elemento
-         │     Solo las columnas del sistema. NO toques Status, FechaPromesa
-         │     ni Comentario: ahí está lo que capturó el proveedor.
+         │     Solo las columnas del sistema. NO toques Status: ahí está lo
+         │     que seleccionó el proveedor.
          │
          └─ Si is_closed = true               → Eliminar elemento
                La orden se cerró en compras y sale de la lista del proveedor.
@@ -210,13 +211,11 @@ Cuando se crea o modifica un elemento  (lista: Ordenes - PROV-A)
        "supplier_code": "PROV-A",
        "updates": [
          {
-           "po_number":        "@{triggerOutputs()?['body/Orden']}",
-           "line_number":      @{triggerOutputs()?['body/Linea']},
-           "status":           "@{triggerOutputs()?['body/Status/Value']}",
-           "promised_date":    "@{triggerOutputs()?['body/FechaPromesa']}",
-           "supplier_comment": "@{triggerOutputs()?['body/Comentario']}",
-           "changed_by":       "@{triggerOutputs()?['body/Editor/Email']}",
-           "changed_at":       "@{triggerOutputs()?['body/Modified']}"
+           "po_number":   "@{triggerOutputs()?['body/Orden']}",
+           "line_number": @{triggerOutputs()?['body/Linea']},
+           "status":      "@{triggerOutputs()?['body/Status/Value']}",
+           "changed_by":  "@{triggerOutputs()?['body/Editor/Email']}",
+           "changed_at":  "@{triggerOutputs()?['body/Modified']}"
          }
        ]
      }
@@ -235,7 +234,7 @@ todo lo modificado en una sola petición.
   "rejected": 1,
   "results": [
     { "po_number": "OC-1001", "line_number": 1, "applied": true,
-      "changed_fields": ["status", "promised_date"], "message": "Cambio aplicado." },
+      "changed_fields": ["status"], "message": "Cambio aplicado." },
     { "po_number": "OC-1001", "line_number": 2, "applied": false,
       "changed_fields": [], "message": "Status 'ya casi' no esta en el catalogo. Validos: ..." }
   ]
@@ -265,7 +264,7 @@ Todas requieren el header `X-API-Key`.
 | `GET` | `/api/v1/suppliers` | Proveedores activos y su lista asignada |
 | `GET` | `/api/v1/suppliers/{code}/orders` | Las órdenes de ese proveedor (`?include_closed=true` para las cerradas) |
 | `GET` | `/api/v1/status-catalog` | Valores de la columna `Status` |
-| `POST` | `/api/v1/supplier-updates` | Los cambios que capturó el proveedor |
+| `POST` | `/api/v1/supplier-updates` | El status que seleccionó el proveedor |
 
 Probar desde la terminal:
 
@@ -276,7 +275,6 @@ curl -X POST http://127.0.0.1:8000/api/v1/supplier-updates \
   -H "X-API-Key: tu-clave" -H "Content-Type: application/json" \
   -d '{"supplier_code":"PROV-A","updates":[
         {"po_number":"OC-1001","line_number":1,"status":"En proceso",
-         "promised_date":"2026-10-20","supplier_comment":"En fabricacion",
          "changed_by":"invitado@prov-a.mx"}]}'
 ```
 

@@ -1,7 +1,11 @@
 # Conectar el portal con tu SharePoint (sin Power Automate, sin Sistemas)
 
 El portal publica él mismo en SharePoint: clasifica las órdenes por proveedor, crea la
-lista de cada uno si no existe, la mantiene al día y baja lo que el proveedor capturó.
+lista de cada uno si no existe, la mantiene al día y baja el status que el proveedor
+seleccionó.
+
+**El proveedor solo cambia el status, en la lista que le corresponde a él.** Su lista
+tiene exactamente una columna editable; todo lo demás lo escribe el portal.
 
 No hace falta Power Automate, ni licencia Premium, ni gateway. Lo único que hace falta
 es que tu cuenta pueda escribir en el sitio que ya tienes.
@@ -93,12 +97,12 @@ fallos solo.
 
 Siempre en este orden, y el orden importa:
 
-1. **Baja** lo que capturaron los proveedores: status, fecha promesa y comentario. Cada
-   cambio queda en el historial del portal con quién lo hizo y cuándo.
+1. **Baja** el status que seleccionaron los proveedores. Cada cambio queda en el
+   historial del portal con quién lo hizo y cuándo.
 2. **Sube** los campos del sistema: número, parte, cantidad, precio y fecha requerida.
    Al hacerlo restaura cualquier columna que un proveedor haya editado por error.
 
-Al revés, la subida borraría una respuesta recién capturada. Hay una prueba que lo cubre
+Al revés, la subida borraría un status recién seleccionado. Hay una prueba que lo cubre
 justamente por eso.
 
 Además:
@@ -129,16 +133,19 @@ depende de que alguien te habilite algo.
 | `Título` | Texto | Sistema — guarda la clave `OC-1001-1` |
 | `Orden`, `Linea`, `Parte`, `Descripcion`, `Cantidad`, `Unidad`, `FechaRequerida` | varios | Sistema |
 | `Precio`, `Moneda` | Número, Texto | Sistema — solo si autorizaste el precio |
-| **`Status`** | **Elección** | **Proveedor** |
-| **`FechaPromesa`** | **Fecha** | **Proveedor** |
-| **`Comentario`** | **Texto largo** | **Proveedor** |
+| **`Status`** | **Elección** | **Proveedor — la única editable** |
+
+La **fecha promesa** y la **nota** no están en esta tabla a propósito: son internas. Las
+captura mantenimiento en el portal (pantalla de la orden → *Seguimiento interno*),
+normalmente con lo que el proveedor dijo por teléfono, y nunca salen hacia SharePoint.
 
 La columna `Status` se crea con el catálogo cerrado y sin captura libre. `Pendiente` no
 aparece entre las opciones: lo asigna el sistema a las órdenes sin contestar.
 
 Para que el proveedor no vea siquiera editables las columnas del sistema, escóndelas del
-formulario: Lista → Editar formulario → Editar columnas. Es comodidad, no seguridad — la
-seguridad real es que el portal las restaura en la siguiente sincronización.
+formulario: Lista → Editar formulario → Editar columnas, y deja solo `Status`. Es
+comodidad, no seguridad — la seguridad real es que el portal las restaura en la siguiente
+sincronización, y que un campo que no sea el status simplemente no entra a la base.
 
 ## Cuando algo falla
 

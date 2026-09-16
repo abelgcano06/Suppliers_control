@@ -63,11 +63,8 @@ $ColumnasPrecio = @(
     @{ Nombre = "Moneda"; Tipo = "Text" }
 )
 
-# Lo unico que el proveedor puede capturar.
-$ColumnasProveedor = @(
-    @{ Nombre = "FechaPromesa"; Tipo = "DateTime" }
-    @{ Nombre = "Comentario";   Tipo = "Note" }
-)
+# El proveedor NO tiene mas columnas que Status. La fecha promesa y la nota son
+# internas del portal y nunca se publican aqui.
 
 # --------------------------------------------------------------------------- #
 
@@ -195,9 +192,8 @@ foreach ($proveedor in $conLista) {
         Escribir "    Precio NO autorizado: no se crean las columnas Precio/Moneda." "DarkGray"
     }
 
-    Escribir "    Columnas que captura el proveedor:" "DarkGray"
+    Escribir "    Lo unico que captura el proveedor:" "DarkGray"
     Asegurar-Columna $nombreLista $ColumnaStatus
-    foreach ($columna in $ColumnasProveedor) { Asegurar-Columna $nombreLista $columna }
 
     if (-not $Simular) {
         Set-PnPList -Identity $nombreLista -EnableVersioning $true -EnableAttachments $false | Out-Null
@@ -236,8 +232,7 @@ un error aqui es justo lo que expondria la informacion de un proveedor a otro.
      Requiere que Sistemas haya habilitado invitados externos en este sitio.
 
   3. OCULTAR DEL FORMULARIO LAS COLUMNAS DEL SISTEMA
-     Lista -> Editar formulario -> Editar columnas: deja visibles solo
-     Status, FechaPromesa y Comentario.
+     Lista -> Editar formulario -> Editar columnas: deja editable solo Status.
      Es comodidad, no seguridad: aunque el proveedor las edite, el portal
      ignora esos campos y los restaura en la siguiente bajada.
 

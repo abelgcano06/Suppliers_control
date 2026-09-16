@@ -238,13 +238,9 @@ def test_una_segunda_sincronizacion_no_duplica_nada(datos, cliente_graph, sp):
 # --------------------------------------------------------------------------- #
 
 
-def test_baja_lo_que_capturo_el_proveedor(datos, cliente_graph, sp):
+def test_baja_el_status_que_selecciono_el_proveedor(datos, cliente_graph, sp):
     sincronizar(datos, cliente_graph)
-    sp.capturar_respuesta(
-        "Ordenes - PROV-A", "OC-1001-1",
-        Status="En proceso", FechaPromesa="2026-10-20T00:00:00Z",
-        Comentario="En fabricacion",
-    )
+    sp.capturar_respuesta("Ordenes - PROV-A", "OC-1001-1", Status="En proceso")
 
     resultado = sincronizar(datos, cliente_graph)
 
@@ -254,10 +250,62 @@ def test_baja_lo_que_capturo_el_proveedor(datos, cliente_graph, sp):
     )
     datos.refresh(orden)
     assert orden.status is OrderStatus.EN_PROCESO
-    assert orden.promised_date == date(2026, 10, 20)
-    assert orden.supplier_comment == "En fabricacion"
     assert orden.last_supplier_update_by == "invitado@prov-a.mx"
     assert resultado.total_bajados == 1
+
+
+def test_la_lista_del_proveedor_tiene_una_sola_columna_editable(datos, cliente_graph, sp):
+    """Lo unico que el proveedor captura es el Status."""
+    sincronizar(datos, cliente_graph)
+    lista = next(l for l in sp.listas.values() if l["displayName"] == "Ordenes - PROV-A")
+    nombres = [c["name"] for c in lista["columns"]]
+
+    assert "Status" in nombres
+    assert "FechaPromesa" not in nombres
+    assert "Comentario" not in nombres
+
+
+def test_la_fecha_promesa_y_la_nota_interna_nunca_se_publican(datos, cliente_graph, sp):
+    """Son del equipo de mantenimiento: no salen hacia la lista del proveedor."""
+    from app.services.seguimiento import actualizar_seguimiento
+
+    orden = datos.scalar(
+        select(PurchaseOrder).where(PurchaseOrder.po_number == "OC-1001",
+                                    PurchaseOrder.line_number == 1)
+    )
+    actualizar_seguimiento(
+        datos, orden, promised_date=date(2026, 11, 5),
+        internal_note="Hablo el proveedor por telefono", actor="ana@tmmbc",
+    )
+    datos.commit()
+
+    sincronizar(datos, cliente_graph)
+
+    campos = sp.campos_de("Ordenes - PROV-A", "OC-1001-1")
+    assert "FechaPromesa" not in campos
+    assert "Comentario" not in campos
+    assert "Hablo el proveedor" not in json.dumps(campos)
+
+
+def test_si_el_proveedor_agrega_una_columna_a_mano_se_ignora(datos, cliente_graph, sp):
+    """Un campo extra en la lista no entra a la base de datos."""
+    sincronizar(datos, cliente_graph)
+    sp.capturar_respuesta(
+        "Ordenes - PROV-A", "OC-1001-1",
+        Status="Recibida", Comentario="esto no deberia entrar",
+        FechaPromesa="2030-01-01T00:00:00Z",
+    )
+
+    sincronizar(datos, cliente_graph)
+
+    orden = datos.scalar(
+        select(PurchaseOrder).where(PurchaseOrder.po_number == "OC-1001",
+                                    PurchaseOrder.line_number == 1)
+    )
+    datos.refresh(orden)
+    assert orden.status is OrderStatus.RECIBIDA   # el status si entro
+    assert orden.promised_date is None            # lo demas no
+    assert orden.internal_note is None
 
 
 def test_un_status_fuera_del_catalogo_se_rechaza_sin_detener_al_resto(datos, cliente_graph, sp):
@@ -276,15 +324,11 @@ def test_un_status_fuera_del_catalogo_se_rechaza_sin_detener_al_resto(datos, cli
 def test_la_subida_no_pisa_la_respuesta_del_proveedor(datos, cliente_graph, sp):
     """El orden importa: primero baja, luego sube. Si no, se perderia la captura."""
     sincronizar(datos, cliente_graph)
-    sp.capturar_respuesta(
-        "Ordenes - PROV-A", "OC-1001-1", Status="Enviada", Comentario="Va en camino"
-    )
+    sp.capturar_respuesta("Ordenes - PROV-A", "OC-1001-1", Status="Enviada")
 
     sincronizar(datos, cliente_graph)
 
-    campos = sp.campos_de("Ordenes - PROV-A", "OC-1001-1")
-    assert campos["Status"] == "Enviada"
-    assert campos["Comentario"] == "Va en camino"
+    assert sp.campos_de("Ordenes - PROV-A", "OC-1001-1")["Status"] == "Enviada"
 
 
 # --------------------------------------------------------------------------- #

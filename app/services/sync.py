@@ -4,9 +4,9 @@ Power Automate es el unico canal entre la zona interna y la zona externa:
 
 * Bajada  (portal -> SharePoint): `orders_for_supplier` entrega a cada proveedor
   UNICAMENTE sus ordenes, y omite el precio si asi esta configurado el proveedor.
-* Subida  (SharePoint -> portal): `apply_supplier_update` acepta solo status,
-  fecha promesa y comentario. Cualquier otro campo se ignora, y si el proveedor
-  toco una columna del sistema, la siguiente bajada la restaura.
+* Subida  (SharePoint -> portal): `apply_supplier_update` acepta UNICAMENTE el
+  status. Cualquier otro campo se ignora, y si el proveedor toco una columna
+  del sistema, la siguiente bajada la restaura.
 
 Un proveedor nunca puede escribir sobre la orden de otro: la validacion compara
 el propietario de la orden contra el proveedor que manda el cambio.
@@ -15,7 +15,7 @@ el propietario de la orden contra el proveedor que manda el cambio.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -70,10 +70,9 @@ def orders_for_supplier(
             "quantity": float(order.quantity) if order.quantity is not None else None,
             "unit": order.unit,
             "required_date": order.required_date.isoformat() if order.required_date else None,
-            # Campos del proveedor: valor actual, para no pisar lo que ya capturo.
+            # Lo unico que captura el proveedor. Se manda el valor actual para
+            # no pisar lo que ya haya seleccionado.
             "status": order.status.value,
-            "promised_date": order.promised_date.isoformat() if order.promised_date else None,
-            "supplier_comment": order.supplier_comment,
             "is_closed": order.is_closed,
             "updated_at": order.updated_at.isoformat() if order.updated_at else None,
         }
@@ -106,12 +105,14 @@ def apply_supplier_update(
     po_number: str,
     line_number: int,
     status: str | None = None,
-    promised_date: date | None = None,
-    supplier_comment: str | None = None,
     changed_by: str | None = None,
     changed_at: datetime | None = None,
 ) -> UpdateOutcome:
-    """Aplica un cambio capturado por el proveedor en su lista de SharePoint."""
+    """Aplica el status que el proveedor selecciono en su lista de SharePoint.
+
+    Es lo unico que un proveedor puede cambiar. La fecha promesa y la nota se
+    capturan en el portal (ver `app/services/seguimiento.py`).
+    """
     order = db.scalar(
         select(PurchaseOrder).where(
             PurchaseOrder.po_number == po_number,
@@ -140,26 +141,6 @@ def apply_supplier_update(
             _log(db, order, "status", order.status.value, nuevo.value, actor, momento)
             order.status = nuevo
             cambios.append("status")
-
-    if promised_date is not None and promised_date != order.promised_date:
-        _log(
-            db,
-            order,
-            "promised_date",
-            order.promised_date.isoformat() if order.promised_date else None,
-            promised_date.isoformat(),
-            actor,
-            momento,
-        )
-        order.promised_date = promised_date
-        cambios.append("promised_date")
-
-    if supplier_comment is not None:
-        comentario = supplier_comment.strip()[:2000] or None
-        if comentario != order.supplier_comment:
-            _log(db, order, "supplier_comment", order.supplier_comment, comentario, actor, momento)
-            order.supplier_comment = comentario
-            cambios.append("supplier_comment")
 
     if cambios:
         order.last_supplier_update_at = momento

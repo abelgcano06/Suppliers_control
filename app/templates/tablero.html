@@ -16,7 +16,8 @@
 {% block contenido %}
 <h1>Tablero consolidado</h1>
 <p class="subtitulo">
-  Todas las ordenes abiertas de todos los proveedores en una sola vista.
+  Todas las órdenes abiertas de todos los proveedores en una sola vista.
+  El proveedor solo cambia el status, desde la lista de SharePoint que le toca.
   {% if ultima_carga %}
     Ultima carga: {{ ultima_carga.uploaded_at.strftime('%d/%m/%Y %H:%M') }} UTC
     ({{ ultima_carga.filename }}{% if ultima_carga.uploaded_by %}, por {{ ultima_carga.uploaded_by }}{% endif %}).
@@ -102,7 +103,7 @@
         <tr>
           <th>Orden</th><th>Ln</th><th>Proveedor</th><th>Parte</th><th>Descripcion</th>
           <th>Cant.</th><th>Requerida</th><th>Status</th><th>Promesa</th>
-          <th>Retraso</th><th>Comentario</th><th>Ultima respuesta</th>
+          <th>Retraso</th><th>Nota interna</th><th>Ultima respuesta</th>
         </tr>
       </thead>
       <tbody>
@@ -125,7 +126,7 @@
               <span class="etiqueta alerta" title="El proveedor declaro el retraso">Declarado</span>
             {% endif %}
           </td>
-          <td class="envuelve">{{ o.supplier_comment or '—' }}</td>
+          <td class="envuelve">{{ o.internal_note or '—' }}</td>
           <td>{{ o.last_supplier_update_at.strftime('%d/%m/%Y %H:%M') if o.last_supplier_update_at else '—' }}</td>
         </tr>
         {% endfor %}

@@ -7,6 +7,9 @@ sincronización hacia SharePoint. Implementa el concepto de la propuesta:
 > proveedor solo sus órdenes, el proveedor marca el status de cada una, y nosotros
 > vemos todo consolidado en un solo tablero.
 
+**Lo único que hace el proveedor es cambiar el status**, en la lista de SharePoint que
+le corresponde a él. Su lista tiene exactamente una columna editable.
+
 **Los proveedores nunca entran a este portal.** Su único punto de contacto es su lista
 de SharePoint.
 
@@ -40,7 +43,7 @@ uvicorn app.main:app --reload
 - Portal: <http://127.0.0.1:8000>
 - Documentación interactiva de la API: <http://127.0.0.1:8000/docs>
 
-Pruebas: `python -m pytest -q` (119 pruebas).
+Pruebas: `python -m pytest -q` (135 pruebas).
 
 ## Qué hace el portal
 
@@ -49,6 +52,7 @@ Pruebas: `python -m pytest -q` (119 pruebas).
 | **Tablero** (`/`) | Todas las órdenes abiertas de todos los proveedores, con alertas de retraso y de sin respuesta, filtros y exportación a CSV. |
 | **Cargar reporte** (`/cargar`) | Sube el Excel de compras. Valida, da de alta, actualiza y cierra órdenes. Muestra fila por fila lo que rechazó y por qué. |
 | **Proveedores** (`/proveedores`) | Alta y baja, lista de SharePoint asignada, si se publica el precio, y el % de respuesta de cada uno. |
+| **Orden** (`/ordenes/{id}`) | El detalle, su historial completo, y donde mantenimiento captura la **fecha promesa** y una **nota interna** — lo que el proveedor dijo por teléfono. No se publica. |
 | **SharePoint** (`/sharepoint`) | Publica las listas de todos los proveedores y baja sus respuestas, con el detalle de lo que pasó proveedor por proveedor. |
 | **Historial** (`/historial`) | Quién cambió qué, cuándo y desde dónde (Excel, proveedor o portal). |
 
@@ -67,17 +71,21 @@ Estas son las reglas de seguridad de la propuesta, cada una cubierta por pruebas
 1. **Aislamiento entre proveedores.** `GET /api/v1/suppliers/{code}/orders` devuelve
    solo las órdenes de ese proveedor, y un `POST` que intente tocar la orden de otro se
    rechaza sin revelar de quién es.
-2. **Los campos del sistema son intocables desde afuera.** Número, parte, cantidad,
-   precio y fecha requerida solo cambian con una carga de Excel. Si el flujo manda esos
-   campos, se ignoran; la siguiente bajada restaura lo que el proveedor haya editado.
-3. **El status es un catálogo cerrado.** Seis valores, sin texto libre. `Pendiente` lo
+2. **El status es lo único que un proveedor puede cambiar.** Cualquier otro campo que
+   venga de afuera se ignora, aunque llegue en el mismo cuerpo de la petición.
+3. **Los campos del sistema son intocables desde afuera.** Número, parte, cantidad,
+   precio y fecha requerida solo cambian con una carga de Excel, y la siguiente
+   sincronización restaura lo que un proveedor haya editado.
+4. **El status es un catálogo cerrado.** Seis valores, sin texto libre. `Pendiente` lo
    asigna el sistema y el proveedor no lo puede seleccionar.
-4. **El precio es opcional por proveedor.** Con `share_price` apagado el campo no viaja
+5. **El precio es opcional por proveedor.** Con `share_price` apagado el campo no viaja
    en el payload — no viaja vacío, simplemente no existe.
-5. **Historial completo.** Cada diferencia queda en `order_changes` con campo, valor
+6. **La fecha promesa y la nota nunca se publican.** Son internas: las captura
+   mantenimiento en el portal y no aparecen en la lista de ningún proveedor.
+7. **Historial completo.** Cada diferencia queda en `order_changes` con campo, valor
    anterior, valor nuevo, origen, quién y cuándo.
-6. **La carga nunca pisa la respuesta del proveedor.** El Excel actualiza sus campos y
-   deja intactos status, fecha promesa y comentario.
+8. **La carga nunca pisa el status del proveedor.** El Excel actualiza sus campos y deja
+   intacto lo que el proveedor seleccionó.
 
 ## La carga del Excel
 
@@ -191,7 +199,8 @@ app/
   services/
     excel_import.py      Lectura, validación y upsert del reporte
     sharepoint.py        Publicación directa en SharePoint (Microsoft Graph)
-    sync.py              Validación de los cambios que mandan los proveedores
+    sync.py              Validación del status que mandan los proveedores
+    seguimiento.py       Fecha promesa y nota interna (las captura mantenimiento)
     dashboard.py         KPIs, filtros y alertas
   routers/
     web.py               Pantallas del portal
@@ -204,7 +213,7 @@ scripts/
   conectar_sharepoint.py       Inicio de sesión, una sola vez
   sincronizar.py               Sincronización desatendida (Programador de tareas)
   crear_listas_sharepoint.ps1  Alternativa por PnP PowerShell
-tests/                   119 pruebas
+tests/                   135 pruebas
 docs/sharepoint-directo.md   Conectar con tu SharePoint (recomendado)
 docs/power-automate.md       Alternativa con Power Automate en medio
 ```
