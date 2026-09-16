@@ -8,6 +8,8 @@ venv/
 .sharepoint-token.json
 *.sqlite3
 uploads/
+# Generado por scripts/seed_demo.py y generar_reporte_ejemplo.py
+reporte-ejemplo.xlsx
 .pytest_cache/
 .coverage
 htmlcov/
