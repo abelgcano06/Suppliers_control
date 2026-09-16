@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import csv
 import io
+import re
+import zipfile
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -15,7 +17,10 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import get_settings
 from app.db import get_db
 from app.models import ChangeSource, OrderChange, OrderStatus, PurchaseOrder, Supplier, UploadBatch
-from app.services import dashboard
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+
+from app.services import dashboard, sharepoint
 from app.services.excel_import import ExcelImportError, import_orders
 
 router = APIRouter(tags=["portal"])
@@ -309,6 +314,91 @@ def editar_proveedor(
 
 
 # --------------------------------------------------------------------------- #
+# Exportar un archivo por proveedor
+# --------------------------------------------------------------------------- #
+
+# Caracteres que Windows no acepta en un nombre de archivo.
+_PROHIBIDOS = re.compile(r'[<>:"/\\|?*]')
+
+
+def _nombre_de_archivo(supplier: Supplier) -> str:
+    limpio = _PROHIBIDOS.sub("-", f"{supplier.code} - {supplier.name}").strip()
+    return f"{limpio[:80]}.xlsx"
+
+
+def _excel_del_proveedor(supplier: Supplier, ordenes: list[PurchaseOrder]) -> bytes:
+    """Un Excel listo para subir a la lista del proveedor, o para mandarselo por correo."""
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Ordenes abiertas"
+
+    encabezados = ["Clave", "Orden", "Linea", "Parte", "Descripcion", "Cantidad", "Unidad",
+                   "FechaRequerida"]
+    if supplier.share_price:
+        encabezados += ["Precio", "Moneda"]
+    encabezados += ["Status", "FechaPromesa", "Comentario"]
+
+    hoja.append(encabezados)
+    relleno = PatternFill("solid", fgColor="1F4E79")
+    for celda in hoja[1]:
+        celda.font = Font(bold=True, color="FFFFFF")
+        celda.fill = relleno
+        celda.alignment = Alignment(vertical="center")
+
+    for o in ordenes:
+        fila = [
+            f"{o.po_number}-{o.line_number}", o.po_number, o.line_number,
+            o.part_number or "", o.description or "",
+            float(o.quantity) if o.quantity is not None else None, o.unit or "",
+            o.required_date,
+        ]
+        if supplier.share_price:
+            fila += [float(o.unit_price) if o.unit_price is not None else None, o.currency or ""]
+        fila += [o.status.value, o.promised_date, o.supplier_comment or ""]
+        hoja.append(fila)
+
+    for columna, ancho in zip("ABCDEFGHIJKLM", (16, 12, 6, 14, 38, 10, 8, 15, 12, 8, 14, 14, 40)):
+        hoja.column_dimensions[columna].width = ancho
+    hoja.freeze_panes = "A2"
+
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    return buffer.getvalue()
+
+
+@router.get("/proveedores/exportar.zip")
+def exportar_por_proveedor(db: Session = Depends(get_db)):
+    """Un Excel por proveedor, ya clasificado, en un solo ZIP.
+
+    Es el camino que no depende de permisos de nada: si el tenant no deja que el
+    portal escriba en SharePoint, subes estos archivos a mano.
+    """
+    proveedores = db.scalars(
+        select(Supplier).where(Supplier.active == True).order_by(Supplier.name)  # noqa: E712
+    ).all()
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_archivo:
+        for proveedor in proveedores:
+            ordenes = dashboard.query_orders(
+                db, dashboard.OrderFilters(supplier_id=proveedor.id)
+            )
+            if not ordenes:
+                continue
+            zip_archivo.writestr(
+                _nombre_de_archivo(proveedor), _excel_del_proveedor(proveedor, ordenes)
+            )
+
+    buffer.seek(0)
+    nombre = f"ordenes-por-proveedor-{date.today().isoformat()}.zip"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Historial de cambios
 # --------------------------------------------------------------------------- #
 
@@ -335,3 +425,66 @@ def historial(request: Request, origen: str | None = None, db: Session = Depends
             filtro_origen=origen or "",
         ),
     )
+
+
+# --------------------------------------------------------------------------- #
+# SharePoint
+# --------------------------------------------------------------------------- #
+
+
+def _pantalla_sharepoint(request: Request, db: Session, resultado=None, error=None,
+                         codigo_http: int = 200):
+    settings = get_settings()
+    try:
+        cuenta = sharepoint.sesion_activa(settings)
+    except sharepoint.SharePointError as exc:
+        cuenta, error = None, error or str(exc)
+
+    proveedores = dashboard.supplier_summaries(db)
+    return templates.TemplateResponse(
+        request,
+        "sharepoint.html",
+        _context(
+            cuenta=cuenta,
+            sitio=settings.sp_site_url,
+            modo=settings.sp_auth_mode,
+            resultado=resultado,
+            error=error,
+            sin_lista=[r.supplier for r in proveedores
+                       if r.supplier.active and not r.supplier.sharepoint_list],
+            con_lista=[r for r in proveedores
+                       if r.supplier.active and r.supplier.sharepoint_list],
+        ),
+        status_code=codigo_http,
+    )
+
+
+@router.get("/sharepoint", response_class=HTMLResponse)
+def pantalla_sharepoint(request: Request, db: Session = Depends(get_db)):
+    return _pantalla_sharepoint(request, db)
+
+
+@router.post("/sharepoint/sincronizar", response_class=HTMLResponse)
+def sincronizar_sharepoint(request: Request, db: Session = Depends(get_db)):
+    """Baja lo que capturaron los proveedores y publica las ordenes al dia."""
+    settings = get_settings()
+    if not settings.sp_site_url:
+        return _pantalla_sharepoint(
+            request, db,
+            error="Falta capturar SP_SITE_URL en el archivo .env (la liga de tu sitio).",
+            codigo_http=400,
+        )
+    try:
+        resultado = sharepoint.sincronizar(db, settings)
+    except sharepoint.SinSesion as exc:
+        return _pantalla_sharepoint(request, db, error=str(exc), codigo_http=401)
+    except sharepoint.SharePointError as exc:
+        db.rollback()
+        return _pantalla_sharepoint(request, db, error=str(exc), codigo_http=502)
+    return _pantalla_sharepoint(request, db, resultado=resultado)
+
+
+@router.post("/sharepoint/desconectar")
+def desconectar_sharepoint():
+    sharepoint.cerrar_sesion()
+    return RedirectResponse("/sharepoint", status_code=status.HTTP_303_SEE_OTHER)

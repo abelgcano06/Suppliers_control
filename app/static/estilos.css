@@ -130,6 +130,24 @@ input[type=text], input[type=email], input[type=file], select, textarea {
 }
 .boton:hover { filter: brightness(1.1); }
 .boton.secundario { background: #fff; color: var(--acento); }
+.boton:disabled,
+.boton[disabled] {
+  background: #e4e7eb;
+  border-color: var(--linea);
+  color: #9aa3ad;
+  cursor: not-allowed;
+  filter: none;
+}
+
+pre {
+  background: #f5f6f8;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0 0 10px;
+}
+code { font-family: Consolas, "SF Mono", monospace; font-size: 13px; }
 
 /* --- Tablas -------------------------------------------------------------- */
 .tabla-envoltura { overflow-x: auto; }

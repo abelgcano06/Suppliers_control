@@ -5,6 +5,7 @@ __pycache__/
 venv/
 .env
 *.db
+.sharepoint-token.json
 *.sqlite3
 uploads/
 .pytest_cache/

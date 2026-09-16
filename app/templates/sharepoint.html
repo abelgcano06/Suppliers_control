@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block titulo %}SharePoint · {{ settings.app_title }}{% endblock %}
+
+{% block contenido %}
+<h1>SharePoint</h1>
+<p class="subtitulo">
+  El portal clasifica las órdenes por proveedor, crea la lista de cada uno si no existe
+  y las publica él mismo. No hace falta Power Automate.
+</p>
+
+{% if error %}
+  <div class="mensaje error"><strong>No se pudo sincronizar.</strong><br>{{ error }}</div>
+{% endif %}
+
+{% if resultado %}
+  <div class="mensaje {{ 'exito' if resultado.ok else 'aviso' }}">
+    <strong>Sincronización terminada.</strong>
+    Se bajaron {{ resultado.total_bajados }} respuesta{{ 's' if resultado.total_bajados != 1 else '' }}
+    de proveedores y se publicaron {{ resultado.total_publicados }} línea{{ 's' if resultado.total_publicados != 1 else '' }}.
+    {% if resultado.total_eliminados %}
+      {{ resultado.total_eliminados }} se retiraron de las listas por estar cerradas.
+    {% endif %}
+    {% if resultado.total_rechazados %}
+      {{ resultado.total_rechazados }} cambio(s) del proveedor se rechazaron.
+    {% endif %}
+    {% for e in resultado.errores %}<br>{{ e }}{% endfor %}
+  </div>
+
+  <div class="panel">
+    <h2>Detalle por proveedor</h2>
+    <div class="tabla-envoltura">
+      <table>
+        <thead>
+          <tr><th>Proveedor</th><th>Lista</th><th>Bajados</th><th>Nuevos</th>
+              <th>Actualizados</th><th>Retirados</th><th>Resultado</th></tr>
+        </thead>
+        <tbody>
+          {% for p in resultado.proveedores %}
+          <tr>
+            <td>{{ p.nombre }}</td>
+            <td>
+              {{ p.lista }}
+              {% if p.lista_creada %}<span class="etiqueta bien">lista creada</span>{% endif %}
+            </td>
+            <td class="numero">{{ p.bajados }}</td>
+            <td class="numero">{{ p.creados }}</td>
+            <td class="numero">{{ p.actualizados }}</td>
+            <td class="numero">{{ p.eliminados }}</td>
+            <td>
+              {% if p.ok %}<span class="etiqueta bien">Sin problemas</span>
+              {% else %}<span class="etiqueta alerta">{{ p.errores|length }} problema(s)</span>{% endif %}
+            </td>
+          </tr>
+          {% if p.errores %}
+          <tr><td colspan="7" class="envuelve">
+            <ul class="lista-errores">
+              {% for e in p.errores[:15] %}<li>{{ e }}</li>{% endfor %}
+            </ul>
+          </td></tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+<div class="rejilla-dos">
+  <div class="panel">
+    <h2>Conexión</h2>
+    <dl class="datos">
+      <dt>Sitio</dt>
+      <dd>{% if sitio %}<a href="{{ sitio }}" target="_blank" rel="noopener">{{ sitio }}</a>
+          {% else %}<span class="etiqueta aviso">Falta SP_SITE_URL en el .env</span>{% endif %}</dd>
+      <dt>Modo</dt><dd>{{ 'Tu cuenta (delegado)' if modo == 'delegado' else 'Registro de aplicación' }}</dd>
+      <dt>Sesión</dt>
+      <dd>
+        {% if cuenta %}<span class="etiqueta bien">{{ cuenta }}</span>
+        {% else %}<span class="etiqueta aviso">Sin sesión</span>{% endif %}
+      </dd>
+    </dl>
+
+    {% if not cuenta and modo == 'delegado' %}
+      <p class="subtitulo" style="margin-top:14px">
+        Para conectarte, corre esto una vez en la terminal. Te va a dar un código
+        para pegarlo en el navegador:
+      </p>
+      <pre><code>python scripts/conectar_sharepoint.py</code></pre>
+      <p class="subtitulo">
+        Si te marca que el tenant no consintió la aplicación, corre primero
+        <code>python scripts/diagnostico_sharepoint.py</code>.
+      </p>
+    {% elif cuenta %}
+      <form method="post" action="/sharepoint/desconectar" style="margin-top:14px">
+        <button class="boton secundario" type="submit">Cerrar sesión de SharePoint</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>Sincronizar</h2>
+    <p class="subtitulo">
+      Primero baja lo que capturaron los proveedores, y después publica las órdenes al día.
+      Ese orden importa: al revés, la subida borraría una respuesta recién capturada.
+    </p>
+    <form method="post" action="/sharepoint/sincronizar">
+      <button class="boton" type="submit" {{ 'disabled' if not cuenta or not sitio else '' }}>
+        Sincronizar ahora
+      </button>
+    </form>
+    {% if not cuenta or not sitio %}
+      <p class="subtitulo" style="margin-top:10px">
+        Se habilita en cuanto haya sesión y sitio configurado.
+      </p>
+    {% endif %}
+    <p class="subtitulo" style="margin-top:14px">
+      Para que corra sola, programa <code>python scripts/sincronizar.py</code> en el
+      Programador de tareas de Windows, cada hora.
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Proveedores que se van a publicar</h2>
+  {% if con_lista %}
+  <div class="tabla-envoltura">
+    <table>
+      <thead><tr><th>Proveedor</th><th>Código</th><th>Lista</th><th>Órdenes abiertas</th><th>Precio</th></tr></thead>
+      <tbody>
+        {% for r in con_lista %}
+        <tr>
+          <td>{{ r.supplier.name }}</td>
+          <td>{{ r.supplier.code }}</td>
+          <td>{{ r.supplier.sharepoint_list }}</td>
+          <td class="numero">{{ r.abiertas }}</td>
+          <td>{{ 'Visible' if r.supplier.share_price else 'Oculto' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="vacio">Ningún proveedor activo tiene lista asignada.</p>
+  {% endif %}
+
+  {% if sin_lista %}
+    <div class="mensaje aviso" style="margin-top:14px">
+      Estos proveedores están activos pero no tienen lista asignada, así que no se
+      publican: {{ sin_lista|map(attribute='name')|join(', ') }}.
+      <a href="/proveedores">Asígnales una aquí.</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

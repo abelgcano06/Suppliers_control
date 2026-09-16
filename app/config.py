@@ -19,6 +19,17 @@ class Settings(BaseSettings):
     # Dias de anticipacion para la alerta "por vencer".
     due_soon_days: int = 7
 
+    # --- SharePoint (conexion directa, sin Power Automate) -------------------
+    # Liga del sitio, tal como aparece en el navegador.
+    sp_site_url: str = ""
+    # "delegado" (inicias sesion con tu cuenta) o "aplicacion" (registro con secreto).
+    sp_auth_mode: str = "delegado"
+    sp_tenant_id: str = ""
+    sp_client_id: str = ""
+    sp_client_secret: str = ""
+    # Donde se guarda la sesion de SharePoint. Contiene un token: no lo subas a git.
+    sp_token_cache: str = ".sharepoint-token.json"
+
     timezone: str = "America/Tijuana"
 
     # Nombre que se muestra en el encabezado del portal.

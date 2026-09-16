@@ -8,19 +8,25 @@ sincronización hacia SharePoint. Implementa el concepto de la propuesta:
 > vemos todo consolidado en un solo tablero.
 
 **Los proveedores nunca entran a este portal.** Su único punto de contacto es su lista
-de SharePoint, y el único puente entre las dos zonas es Power Automate, que habla con
-la API `/api/v1` de este repositorio.
+de SharePoint.
+
+El portal publica en SharePoint **él solo**, sin Power Automate y sin depender de
+Sistemas: clasifica las órdenes por proveedor, crea la lista de cada uno si no existe,
+la mantiene al día y baja lo que el proveedor capturó.
 
 ```
-Zona interna (mantenimiento)          Microsoft 365              Zona externa
-┌──────────────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│  Excel de compras        │      │                  │      │  Proveedor A     │
-│           ↓              │      │  Power Automate  │      │  ve solo su lista│
-│  Portal (este repo)      │◄────►│        ↕         │◄────►│  Proveedor B     │
-│           ↓              │ API  │  SharePoint      │      │  ve solo su lista│
-│  Base de datos SQL       │ v1   │  1 lista x prov. │      │  Proveedor C     │
-└──────────────────────────┘      └──────────────────┘      └──────────────────┘
+Zona interna (mantenimiento)                          Zona externa
+┌──────────────────────────┐                      ┌──────────────────┐
+│  Excel de compras        │                      │  Proveedor A     │
+│           ↓              │   SharePoint         │  ve solo su lista│
+│  Portal (este repo)      │◄────────────────────►│  Proveedor B     │
+│           ↓              │   1 lista x proveedor│  ve solo su lista│
+│  Base de datos SQL       │                      │  Proveedor C     │
+└──────────────────────────┘                      └──────────────────┘
 ```
+
+Si prefieres el esquema original con Power Automate en medio, también está: la API
+`/api/v1` sigue completa y documentada en [`docs/power-automate.md`](docs/power-automate.md).
 
 ## Arrancar en 3 minutos
 
@@ -34,7 +40,7 @@ uvicorn app.main:app --reload
 - Portal: <http://127.0.0.1:8000>
 - Documentación interactiva de la API: <http://127.0.0.1:8000/docs>
 
-Pruebas: `python -m pytest -q` (82 pruebas).
+Pruebas: `python -m pytest -q` (119 pruebas).
 
 ## Qué hace el portal
 
@@ -43,6 +49,7 @@ Pruebas: `python -m pytest -q` (82 pruebas).
 | **Tablero** (`/`) | Todas las órdenes abiertas de todos los proveedores, con alertas de retraso y de sin respuesta, filtros y exportación a CSV. |
 | **Cargar reporte** (`/cargar`) | Sube el Excel de compras. Valida, da de alta, actualiza y cierra órdenes. Muestra fila por fila lo que rechazó y por qué. |
 | **Proveedores** (`/proveedores`) | Alta y baja, lista de SharePoint asignada, si se publica el precio, y el % de respuesta de cada uno. |
+| **SharePoint** (`/sharepoint`) | Publica las listas de todos los proveedores y baja sus respuestas, con el detalle de lo que pasó proveedor por proveedor. |
 | **Historial** (`/historial`) | Quién cambió qué, cuándo y desde dónde (Excel, proveedor o portal). |
 
 ### Indicadores del piloto
@@ -141,19 +148,31 @@ Exactamente lo que dice la propuesta, nada más:
 | Licencia Power Automate Premium para un usuario | El conector a SQL Server es premium | Solo el dueño de los flujos |
 | Nada más | El portal y la base de datos viven en la infraestructura del área | Sin accesos nuevos a red |
 
-## Conectar SharePoint y Power Automate
+## Conectar con SharePoint
 
-La guía paso a paso está en [`docs/power-automate.md`](docs/power-automate.md): las
-columnas de la lista, los dos flujos y la tabla de rechazos que se ven en la práctica.
+Guía completa: [`docs/sharepoint-directo.md`](docs/sharepoint-directo.md). En corto:
 
-Las listas no se crean a mano — `scripts/crear_listas_sharepoint.ps1` las genera leyendo
-los proveedores del propio portal, y es idempotente. No toca permisos a propósito: ese
-paso se hace revisado, porque un error ahí es justo lo que expondría la información de
-un proveedor a otro.
+```bash
+# 1. Pon la liga de tu sitio en el .env:  SP_SITE_URL=https://...
+# 2. Averigua qué te deja hacer tu tenant (crea una lista de prueba y la borra):
+python scripts/diagnostico_sharepoint.py
+# 3. Asigna una lista a cada proveedor en el portal. El portal la crea sola.
+# 4. Portal -> SharePoint -> Sincronizar ahora.
+# 5. Para que corra sola, programa esto cada hora en el Programador de Windows:
+python scripts/sincronizar.py
+```
 
-**Antes de armar ningún flujo**, resuelve la sección 0 de esa guía: Power Automate corre
-en la nube y el portal corre en la red interna, así que hay que decidir cómo se alcanzan.
-Esa decisión agrega un cuarto requerimiento a la lista de Sistemas.
+Cada sincronización **primero baja** lo que capturaron los proveedores y **después sube**
+los campos del sistema. El orden importa: al revés, la subida borraría una respuesta
+recién capturada.
+
+Lo único manual, y a propósito: **compartir cada lista solo con su proveedor**. El portal
+no toca permisos, porque un error ahí es justo lo que le enseñaría a un proveedor las
+órdenes de otro.
+
+**Si tu tenant no te deja**, el portal exporta un Excel por proveedor ya clasificado
+(Proveedores → *Exportar un Excel por proveedor*) y los subes a mano. Funciona hoy, sin
+permisos de nada.
 
 ## Lo que este esquema no hace
 
@@ -171,7 +190,8 @@ app/
   security.py            Autenticación por X-API-Key
   services/
     excel_import.py      Lectura, validación y upsert del reporte
-    sync.py              Bajada y subida contra SharePoint
+    sharepoint.py        Publicación directa en SharePoint (Microsoft Graph)
+    sync.py              Validación de los cambios que mandan los proveedores
     dashboard.py         KPIs, filtros y alertas
   routers/
     web.py               Pantallas del portal
@@ -180,7 +200,11 @@ app/
 scripts/
   generar_reporte_ejemplo.py   Excel de ejemplo con el formato de compras
   seed_demo.py                 Escenario completo de demostración
-  crear_listas_sharepoint.ps1  Crea las listas de SharePoint (PnP PowerShell)
-tests/                   82 pruebas
-docs/power-automate.md   Configuración de SharePoint y los dos flujos
+  diagnostico_sharepoint.py    Averigua qué permite tu tenant, paso por paso
+  conectar_sharepoint.py       Inicio de sesión, una sola vez
+  sincronizar.py               Sincronización desatendida (Programador de tareas)
+  crear_listas_sharepoint.ps1  Alternativa por PnP PowerShell
+tests/                   119 pruebas
+docs/sharepoint-directo.md   Conectar con tu SharePoint (recomendado)
+docs/power-automate.md       Alternativa con Power Automate en medio
 ```

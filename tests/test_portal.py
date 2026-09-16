@@ -266,3 +266,82 @@ def test_un_alcance_de_cierre_invalido_no_revienta(client, datos):
     )
     assert respuesta.status_code == 200
     assert "procesada" in respuesta.text
+
+
+# --------------------------------------------------------------------------- #
+# Exportacion por proveedor y pantalla de SharePoint
+# --------------------------------------------------------------------------- #
+
+
+def test_exporta_un_excel_por_proveedor(client, datos):
+    import io, zipfile
+    from openpyxl import load_workbook
+
+    respuesta = client.get("/proveedores/exportar.zip")
+    assert respuesta.status_code == 200
+    assert respuesta.headers["content-type"] == "application/zip"
+
+    with zipfile.ZipFile(io.BytesIO(respuesta.content)) as z:
+        nombres = z.namelist()
+        assert len(nombres) == 2  # un archivo por proveedor con ordenes
+
+        archivo_a = next(n for n in nombres if "PROV-A" in n)
+        hoja = load_workbook(io.BytesIO(z.read(archivo_a))).active
+        encabezados = [c.value for c in hoja[1]]
+        assert encabezados[0] == "Clave"
+        assert "Status" in encabezados
+        assert "Precio" not in encabezados  # PROV-A no tiene el precio autorizado
+
+        claves = {hoja.cell(row=f, column=1).value for f in range(2, hoja.max_row + 1)}
+        assert claves == {"OC-1001-1", "OC-1002-1", "OC-1003-1"}  # solo las suyas
+
+
+def test_el_excel_del_proveedor_incluye_precio_si_esta_autorizado(client, datos):
+    import io, zipfile
+    from openpyxl import load_workbook
+
+    proveedor = datos.scalar(select(Supplier).where(Supplier.code == "PROV-A"))
+    proveedor.share_price = True
+    datos.commit()
+
+    with zipfile.ZipFile(io.BytesIO(client.get("/proveedores/exportar.zip").content)) as z:
+        archivo_a = next(n for n in z.namelist() if "PROV-A" in n)
+        hoja = load_workbook(io.BytesIO(z.read(archivo_a))).active
+        assert "Precio" in [c.value for c in hoja[1]]
+
+
+def test_un_proveedor_dado_de_baja_no_se_exporta(client, datos):
+    import io, zipfile
+
+    proveedor = datos.scalar(select(Supplier).where(Supplier.code == "PROV-B"))
+    proveedor.active = False
+    datos.commit()
+
+    with zipfile.ZipFile(io.BytesIO(client.get("/proveedores/exportar.zip").content)) as z:
+        assert not any("PROV-B" in n for n in z.namelist())
+
+
+def test_la_pantalla_de_sharepoint_abre_sin_sesion(client, datos):
+    respuesta = client.get("/sharepoint")
+    assert respuesta.status_code == 200
+    assert "Sin sesi" in respuesta.text
+    assert "conectar_sharepoint.py" in respuesta.text
+
+
+def test_sincronizar_sin_sitio_configurado_avisa(client, datos):
+    respuesta = client.post("/sharepoint/sincronizar")
+    assert respuesta.status_code == 400
+    assert "SP_SITE_URL" in respuesta.text
+
+
+def test_sincronizar_sin_sesion_avisa(client, datos, monkeypatch, tmp_path):
+    from app.config import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setenv("SP_SITE_URL", "https://tmmbc.sharepoint.com/sites/Proveedores")
+    monkeypatch.setenv("SP_TOKEN_CACHE", str(tmp_path / "sin-token.json"))
+    get_settings.cache_clear()
+
+    respuesta = client.post("/sharepoint/sincronizar")
+    assert respuesta.status_code == 401
+    assert "conectar_sharepoint.py" in respuesta.text
+    get_settings.cache_clear()
