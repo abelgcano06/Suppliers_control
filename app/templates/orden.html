@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titulo %}{{ orden.po_number }}-{{ orden.line_number }} · {{ settings.app_title }}{% endblock %}
+
+{% block contenido %}
+<p><a href="/">&larr; Volver al tablero</a></p>
+<h1>Orden {{ orden.po_number }} · linea {{ orden.line_number }}</h1>
+<p class="subtitulo">
+  {{ orden.supplier.name if orden.supplier else 'Sin proveedor' }}
+  {% if orden.is_closed %}<span class="etiqueta">Cerrada</span>
+  {% elif orden.esta_retrasada(hoy) %}<span class="etiqueta alerta">Retrasada {{ orden.dias_de_retraso(hoy) }} dias</span>
+  {% elif orden.sin_respuesta %}<span class="etiqueta aviso">Sin respuesta del proveedor</span>
+  {% else %}<span class="etiqueta info">{{ orden.status.value }}</span>{% endif %}
+</p>
+
+<div class="rejilla-dos">
+  <div class="panel">
+    <h2>Datos del sistema</h2>
+    <p class="subtitulo">Vienen del reporte de compras. Si el proveedor los edita, la siguiente sincronizacion los restaura.</p>
+    <dl class="datos">
+      <dt>Parte</dt><dd>{{ orden.part_number or '—' }}</dd>
+      <dt>Descripcion</dt><dd>{{ orden.description or '—' }}</dd>
+      <dt>Cantidad</dt><dd>{{ '%g'|format(orden.quantity|float) if orden.quantity is not none else '—' }} {{ orden.unit or '' }}</dd>
+      <dt>Precio unitario</dt><dd>{% if orden.unit_price is not none %}{{ '%.2f'|format(orden.unit_price|float) }} {{ orden.currency or '' }}{% else %}—{% endif %}</dd>
+      <dt>Total</dt><dd>{% if orden.total is not none %}{{ '%.2f'|format(orden.total) }} {{ orden.currency or '' }}{% else %}—{% endif %}</dd>
+      <dt>Fecha requerida</dt><dd>{{ orden.required_date.strftime('%d/%m/%Y') if orden.required_date else '—' }}</dd>
+      <dt>Alta en el portal</dt><dd>{{ orden.created_at.strftime('%d/%m/%Y %H:%M') }} UTC</dd>
+    </dl>
+  </div>
+
+  <div class="panel">
+    <h2>Respuesta del proveedor</h2>
+    <p class="subtitulo">Lo unico que el proveedor puede capturar en su lista de SharePoint.</p>
+    <dl class="datos">
+      <dt>Status</dt><dd>{{ orden.status.value }}</dd>
+      <dt>Fecha promesa</dt><dd>{{ orden.promised_date.strftime('%d/%m/%Y') if orden.promised_date else '—' }}</dd>
+      <dt>Comentario</dt><dd>{{ orden.supplier_comment or '—' }}</dd>
+      <dt>Ultima respuesta</dt><dd>{{ orden.last_supplier_update_at.strftime('%d/%m/%Y %H:%M') ~ ' UTC' if orden.last_supplier_update_at else 'Sin respuesta' }}</dd>
+      <dt>Capturo</dt><dd>{{ orden.last_supplier_update_by or '—' }}</dd>
+    </dl>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Historial de cambios ({{ orden.changes|length }})</h2>
+  {% if orden.changes %}
+  <div class="tabla-envoltura">
+    <table>
+      <thead><tr><th>Cuando (UTC)</th><th>Origen</th><th>Quien</th><th>Campo</th><th>Antes</th><th>Despues</th></tr></thead>
+      <tbody>
+        {% for c in orden.changes %}
+        <tr>
+          <td>{{ c.changed_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td>
+            {% if c.source.name == 'PROVEEDOR' %}<span class="etiqueta info">{{ c.source.value }}</span>
+            {% else %}<span class="etiqueta">{{ c.source.value }}</span>{% endif %}
+          </td>
+          <td>{{ c.actor or '—' }}</td>
+          <td>{{ c.field }}</td>
+          <td class="envuelve">{{ c.old_value if c.old_value is not none else '—' }}</td>
+          <td class="envuelve">{{ c.new_value if c.new_value is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="vacio">Sin cambios registrados.</p>
+  {% endif %}
+</div>
+{% endblock %}

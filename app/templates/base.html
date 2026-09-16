@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}{{ settings.app_title }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/estilos.css">
+</head>
+<body>
+  <header class="barra">
+    <div class="barra-marca">
+      <strong>{{ settings.app_title }}</strong>
+      <span class="barra-sub">{{ settings.app_subtitle }}</span>
+    </div>
+    <nav class="barra-nav">
+      <a href="/" class="{{ 'activo' if request.url.path == '/' else '' }}">Tablero</a>
+      <a href="/cargar" class="{{ 'activo' if request.url.path == '/cargar' else '' }}">Cargar reporte</a>
+      <a href="/proveedores" class="{{ 'activo' if request.url.path == '/proveedores' else '' }}">Proveedores</a>
+      <a href="/historial" class="{{ 'activo' if request.url.path == '/historial' else '' }}">Historial</a>
+      <a href="/docs" class="secundario">API</a>
+    </nav>
+  </header>
+
+  <main class="contenido">
+    {% block contenido %}{% endblock %}
+  </main>
+
+  <footer class="pie">
+    Los proveedores nunca entran aqui: solo editan su lista de SharePoint.
+    Fecha del sistema: {{ hoy.strftime('%d/%m/%Y') }}.
+  </footer>
+</body>
+</html>

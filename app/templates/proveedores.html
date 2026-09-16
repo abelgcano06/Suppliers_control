@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block titulo %}Proveedores · {{ settings.app_title }}{% endblock %}
+
+{% block contenido %}
+<h1>Proveedores</h1>
+<p class="subtitulo">
+  Alta, baja y configuracion. Cada proveedor activo con lista asignada recibe
+  <strong>solo sus ordenes</strong> en su lista de SharePoint; el precio se publica
+  unicamente si lo autorizas aqui.
+</p>
+
+{% if error %}
+  <div class="mensaje error">{{ error }}</div>
+{% endif %}
+
+<div class="panel">
+  <h2>Desempeno por proveedor</h2>
+  {% if resumen %}
+  <div class="tabla-envoltura">
+    <table>
+      <thead>
+        <tr><th>Proveedor</th><th>Codigo</th><th>Lista SharePoint</th><th>Abiertas</th>
+            <th>Contestadas</th><th>Sin respuesta</th><th>Retrasadas</th>
+            <th>Ultima respuesta</th><th>Precio</th><th>Estado</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in resumen %}
+        <tr>
+          <td>{{ r.supplier.name }}</td>
+          <td>{{ r.supplier.code }}</td>
+          <td>
+            {% if r.supplier.sharepoint_list %}{{ r.supplier.sharepoint_list }}
+            {% else %}<span class="etiqueta aviso">Sin asignar</span>{% endif %}
+          </td>
+          <td class="numero">{{ r.abiertas }}</td>
+          <td class="numero">
+            {{ r.con_status }}
+            <div class="barra-progreso"><span style="width: {{ r.porcentaje_respuesta }}%"></span></div>
+            <small>{{ r.porcentaje_respuesta }}%</small>
+          </td>
+          <td class="numero">
+            {% if r.sin_respuesta %}<span class="etiqueta aviso">{{ r.sin_respuesta }}</span>{% else %}0{% endif %}
+          </td>
+          <td class="numero">
+            {% if r.retrasadas %}<span class="etiqueta alerta">{{ r.retrasadas }}</span>{% else %}0{% endif %}
+          </td>
+          <td>{{ r.ultima_respuesta.strftime('%d/%m/%Y %H:%M') if r.ultima_respuesta else '—' }}</td>
+          <td>{{ 'Visible' if r.supplier.share_price else 'Oculto' }}</td>
+          <td>
+            {% if r.supplier.active %}<span class="etiqueta bien">Activo</span>
+            {% else %}<span class="etiqueta">Baja</span>{% endif %}
+          </td>
+          <td><a href="#editar-{{ r.supplier.id }}">Editar</a></td>
+        </tr>
+        <tr>
+          <td colspan="11">
+            <details class="proveedor" id="editar-{{ r.supplier.id }}">
+              <summary>Editar {{ r.supplier.name }}</summary>
+              <form method="post" action="/proveedores/{{ r.supplier.id }}" class="filtros" style="margin-top:10px">
+                <div class="campo">
+                  <label>Nombre</label>
+                  <input type="text" name="nombre" value="{{ r.supplier.name }}" required>
+                </div>
+                <div class="campo">
+                  <label>Correo de contacto</label>
+                  <input type="email" name="correo" value="{{ r.supplier.contact_email or '' }}">
+                </div>
+                <div class="campo">
+                  <label>Lista de SharePoint</label>
+                  <input type="text" name="lista_sharepoint" value="{{ r.supplier.sharepoint_list or '' }}"
+                         placeholder="Ordenes - {{ r.supplier.code }}">
+                </div>
+                <div class="campo checkbox">
+                  <input type="checkbox" name="compartir_precio" value="true"
+                         id="precio-{{ r.supplier.id }}" {{ 'checked' if r.supplier.share_price else '' }}>
+                  <label for="precio-{{ r.supplier.id }}">Publicar precio</label>
+                </div>
+                <div class="campo checkbox">
+                  <input type="checkbox" name="activo" value="true"
+                         id="activo-{{ r.supplier.id }}" {{ 'checked' if r.supplier.active else '' }}>
+                  <label for="activo-{{ r.supplier.id }}">Activo</label>
+                </div>
+                <button class="boton" type="submit">Guardar</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="vacio">No hay proveedores. Da de alta uno abajo o carga un reporte.</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>Dar de alta un proveedor</h2>
+  <form method="post" action="/proveedores" class="filtros">
+    <div class="campo">
+      <label for="codigo">Codigo *</label>
+      <input type="text" name="codigo" id="codigo" required placeholder="PROV-A">
+    </div>
+    <div class="campo">
+      <label for="nombre">Nombre *</label>
+      <input type="text" name="nombre" id="nombre" required placeholder="Pinturas del Norte">
+    </div>
+    <div class="campo">
+      <label for="correo">Correo de contacto</label>
+      <input type="email" name="correo" id="correo" placeholder="ventas@proveedor.com">
+    </div>
+    <div class="campo">
+      <label for="lista_sharepoint">Lista de SharePoint</label>
+      <input type="text" name="lista_sharepoint" id="lista_sharepoint" placeholder="Ordenes - PROV-A">
+    </div>
+    <div class="campo checkbox">
+      <input type="checkbox" name="compartir_precio" id="compartir_precio" value="true">
+      <label for="compartir_precio">Publicar precio en su lista</label>
+    </div>
+    <button class="boton" type="submit">Dar de alta</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,198 @@
+/* Paleta sobria, pensada para leerse en una pantalla de piso de planta. */
+:root {
+  --tinta: #1b1f24;
+  --tinta-suave: #5b6472;
+  --linea: #dfe3e8;
+  --fondo: #f5f6f8;
+  --panel: #ffffff;
+  --acento: #1f4e79;
+  --acento-claro: #e8f0f8;
+  --alerta: #b3261e;
+  --alerta-claro: #fdecea;
+  --aviso: #a05a00;
+  --aviso-claro: #fff4e0;
+  --bien: #1c6b3f;
+  --bien-claro: #e6f4ec;
+  --radio: 6px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--tinta);
+  background: var(--fondo);
+}
+
+a { color: var(--acento); }
+
+/* --- Barra superior ------------------------------------------------------ */
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--acento);
+  color: #fff;
+}
+.barra-marca strong { display: block; font-size: 15px; }
+.barra-sub { font-size: 12px; opacity: .8; }
+.barra-nav { display: flex; flex-wrap: wrap; gap: 4px; }
+.barra-nav a {
+  color: #fff;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: var(--radio);
+  font-size: 13px;
+}
+.barra-nav a:hover { background: rgba(255,255,255,.14); }
+.barra-nav a.activo { background: rgba(255,255,255,.22); font-weight: 600; }
+.barra-nav a.secundario { opacity: .7; }
+
+.contenido { max-width: 1400px; margin: 0 auto; padding: 20px 24px 48px; }
+.pie {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px 32px;
+  color: var(--tinta-suave);
+  font-size: 12px;
+}
+
+/* --- Bloques ------------------------------------------------------------- */
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 12px; }
+.subtitulo { color: var(--tinta-suave); margin: 0 0 20px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+/* --- KPIs ---------------------------------------------------------------- */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--linea);
+  border-left: 4px solid var(--acento);
+  border-radius: var(--radio);
+  padding: 12px 14px;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.kpi:hover { border-color: var(--acento); }
+.kpi-valor { font-size: 26px; font-weight: 600; line-height: 1.1; }
+.kpi-etiqueta { font-size: 12px; color: var(--tinta-suave); margin-top: 2px; }
+.kpi.malo { border-left-color: var(--alerta); }
+.kpi.malo .kpi-valor { color: var(--alerta); }
+.kpi.medio { border-left-color: var(--aviso); }
+.kpi.medio .kpi-valor { color: var(--aviso); }
+.kpi.bueno { border-left-color: var(--bien); }
+.kpi.bueno .kpi-valor { color: var(--bien); }
+
+/* --- Formularios --------------------------------------------------------- */
+.filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo label { font-size: 12px; color: var(--tinta-suave); }
+input[type=text], input[type=email], input[type=file], select, textarea {
+  padding: 6px 8px;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  font: inherit;
+  background: #fff;
+  min-width: 150px;
+}
+.checkbox { flex-direction: row; align-items: center; gap: 6px; }
+.checkbox label { font-size: 13px; color: var(--tinta); }
+
+.boton {
+  padding: 7px 14px;
+  border: 1px solid var(--acento);
+  border-radius: var(--radio);
+  background: var(--acento);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+.boton:hover { filter: brightness(1.1); }
+.boton.secundario { background: #fff; color: var(--acento); }
+
+/* --- Tablas -------------------------------------------------------------- */
+.tabla-envoltura { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--linea);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--tinta-suave);
+  background: #fafbfc;
+  position: sticky;
+  top: 0;
+}
+tbody tr:hover { background: var(--acento-claro); }
+td.envuelve { white-space: normal; max-width: 280px; }
+td.numero { text-align: right; font-variant-numeric: tabular-nums; }
+tr.cerrada td { opacity: .5; }
+
+/* --- Etiquetas de estado ------------------------------------------------- */
+.etiqueta {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: var(--tinta-suave);
+}
+.etiqueta.alerta { background: var(--alerta-claro); color: var(--alerta); }
+.etiqueta.aviso { background: var(--aviso-claro); color: var(--aviso); }
+.etiqueta.bien { background: var(--bien-claro); color: var(--bien); }
+.etiqueta.info { background: var(--acento-claro); color: var(--acento); }
+
+.mensaje { padding: 12px 14px; border-radius: var(--radio); margin-bottom: 16px; }
+.mensaje.error { background: var(--alerta-claro); color: var(--alerta); border: 1px solid #f3c9c5; }
+.mensaje.exito { background: var(--bien-claro); color: var(--bien); border: 1px solid #c3e2d0; }
+.mensaje.aviso { background: var(--aviso-claro); color: var(--aviso); border: 1px solid #f0dcb4; }
+
+.vacio { padding: 36px; text-align: center; color: var(--tinta-suave); }
+.lista-errores { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+.lista-errores li { margin-bottom: 2px; }
+
+.rejilla-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .rejilla-dos { grid-template-columns: 1fr; } }
+
+dl.datos { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; }
+dl.datos dt { color: var(--tinta-suave); font-size: 12px; }
+dl.datos dd { margin: 0; }
+
+.barra-progreso {
+  height: 6px;
+  background: #eef0f3;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 70px;
+}
+.barra-progreso span { display: block; height: 100%; background: var(--acento); }
+
+details.proveedor summary { cursor: pointer; padding: 4px 0; color: var(--acento); font-size: 13px; }

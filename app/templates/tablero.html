@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block titulo %}Tablero · {{ settings.app_title }}{% endblock %}
+
+{% macro etiqueta_status(orden) %}
+  {% if orden.status.name == 'PENDIENTE' %}
+    <span class="etiqueta aviso">Sin respuesta</span>
+  {% elif orden.status.name == 'RETRASADA' %}
+    <span class="etiqueta alerta">Retrasada</span>
+  {% elif orden.status.name == 'ENTREGADA' %}
+    <span class="etiqueta bien">Entregada</span>
+  {% else %}
+    <span class="etiqueta info">{{ orden.status.value }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% block contenido %}
+<h1>Tablero consolidado</h1>
+<p class="subtitulo">
+  Todas las ordenes abiertas de todos los proveedores en una sola vista.
+  {% if ultima_carga %}
+    Ultima carga: {{ ultima_carga.uploaded_at.strftime('%d/%m/%Y %H:%M') }} UTC
+    ({{ ultima_carga.filename }}{% if ultima_carga.uploaded_by %}, por {{ ultima_carga.uploaded_by }}{% endif %}).
+  {% else %}
+    Todavia no se ha cargado ningun reporte — <a href="/cargar">empieza aqui</a>.
+  {% endif %}
+</p>
+
+<div class="kpis">
+  <a class="kpi" href="/"><div class="kpi-valor">{{ kpis.abiertas }}</div><div class="kpi-etiqueta">Ordenes abiertas</div></a>
+  <a class="kpi {{ 'bueno' if kpis.porcentaje_respuesta >= 80 else 'medio' }}" href="/?alerta=al_dia">
+    <div class="kpi-valor">{{ kpis.porcentaje_respuesta }}%</div>
+    <div class="kpi-etiqueta">Con status actualizado</div>
+  </a>
+  <a class="kpi {{ 'malo' if kpis.sin_respuesta else '' }}" href="/?alerta=sin_respuesta">
+    <div class="kpi-valor">{{ kpis.sin_respuesta }}</div><div class="kpi-etiqueta">Sin respuesta del proveedor</div>
+  </a>
+  <a class="kpi {{ 'malo' if kpis.retrasadas else '' }}" href="/?alerta=retrasadas">
+    <div class="kpi-valor">{{ kpis.retrasadas }}</div><div class="kpi-etiqueta">Retrasadas</div>
+  </a>
+  <a class="kpi {{ 'medio' if kpis.por_vencer else '' }}" href="/?alerta=por_vencer">
+    <div class="kpi-valor">{{ kpis.por_vencer }}</div>
+    <div class="kpi-etiqueta">Por vencer ({{ settings.due_soon_days }} dias)</div>
+  </a>
+  <div class="kpi">
+    <div class="kpi-valor">{% if horas_respuesta is not none %}{{ horas_respuesta }} h{% else %}&mdash;{% endif %}</div>
+    <div class="kpi-etiqueta">Tiempo promedio de respuesta</div>
+  </div>
+</div>
+
+<div class="panel">
+  <form class="filtros" method="get" action="/">
+    <div class="campo">
+      <label for="proveedor">Proveedor</label>
+      <select name="proveedor" id="proveedor">
+        <option value="">Todos</option>
+        {% for p in proveedores %}
+          <option value="{{ p.id }}" {{ 'selected' if filtros.supplier_id == p.id else '' }}>
+            {{ p.name }}{% if not p.active %} (baja){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="status_filtro">Status</label>
+      <select name="status_filtro" id="status_filtro">
+        <option value="">Todos</option>
+        {% for s in OrderStatus %}
+          <option value="{{ s.name }}" {{ 'selected' if filtro_status == s.name else '' }}>{{ s.value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="alerta">Alerta</label>
+      <select name="alerta" id="alerta">
+        <option value="">Todas</option>
+        <option value="retrasadas" {{ 'selected' if filtro_alerta == 'retrasadas' else '' }}>Retrasadas</option>
+        <option value="sin_respuesta" {{ 'selected' if filtro_alerta == 'sin_respuesta' else '' }}>Sin respuesta</option>
+        <option value="por_vencer" {{ 'selected' if filtro_alerta == 'por_vencer' else '' }}>Por vencer</option>
+        <option value="al_dia" {{ 'selected' if filtro_alerta == 'al_dia' else '' }}>Al dia</option>
+      </select>
+    </div>
+    <div class="campo">
+      <label for="q">Buscar orden, parte o descripcion</label>
+      <input type="text" name="q" id="q" value="{{ busqueda }}" placeholder="OC-1001, PN-4471...">
+    </div>
+    <div class="campo checkbox">
+      <input type="checkbox" name="cerradas" id="cerradas" value="true" {{ 'checked' if filtros.include_closed else '' }}>
+      <label for="cerradas">Incluir cerradas</label>
+    </div>
+    <button class="boton" type="submit">Filtrar</button>
+    <a class="boton secundario" href="/">Limpiar</a>
+    <a class="boton secundario" href="/export.csv?{{ request.url.query }}">Exportar CSV</a>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>{{ ordenes|length }} orden{{ 'es' if ordenes|length != 1 else '' }}</h2>
+  {% if ordenes %}
+  <div class="tabla-envoltura">
+    <table>
+      <thead>
+        <tr>
+          <th>Orden</th><th>Ln</th><th>Proveedor</th><th>Parte</th><th>Descripcion</th>
+          <th>Cant.</th><th>Requerida</th><th>Status</th><th>Promesa</th>
+          <th>Retraso</th><th>Comentario</th><th>Ultima respuesta</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in ordenes %}
+        <tr class="{{ 'cerrada' if o.is_closed else '' }}">
+          <td><a href="/ordenes/{{ o.id }}">{{ o.po_number }}</a></td>
+          <td class="numero">{{ o.line_number }}</td>
+          <td>{{ o.supplier.name if o.supplier else '—' }}</td>
+          <td>{{ o.part_number or '—' }}</td>
+          <td class="envuelve">{{ o.description or '—' }}</td>
+          <td class="numero">{{ '%g'|format(o.quantity|float) if o.quantity is not none else '—' }} {{ o.unit or '' }}</td>
+          <td>{{ o.required_date.strftime('%d/%m/%Y') if o.required_date else '—' }}</td>
+          <td>{{ etiqueta_status(o) }}</td>
+          <td>{{ o.promised_date.strftime('%d/%m/%Y') if o.promised_date else '—' }}</td>
+          <td>
+            {% if not o.esta_retrasada(hoy) %}—
+            {% elif o.dias_de_retraso(hoy) > 0 %}
+              <span class="etiqueta alerta">{{ o.dias_de_retraso(hoy) }} d</span>
+            {% else %}
+              <span class="etiqueta alerta" title="El proveedor declaro el retraso">Declarado</span>
+            {% endif %}
+          </td>
+          <td class="envuelve">{{ o.supplier_comment or '—' }}</td>
+          <td>{{ o.last_supplier_update_at.strftime('%d/%m/%Y %H:%M') if o.last_supplier_update_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="vacio">No hay ordenes que cumplan estos filtros.</p>
+  {% endif %}
+</div>
+{% endblock %}

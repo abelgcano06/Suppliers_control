@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block titulo %}Historial · {{ settings.app_title }}{% endblock %}
+
+{% block contenido %}
+<h1>Historial de cambios</h1>
+<p class="subtitulo">Los ultimos 300 movimientos: quien cambio que, cuando y desde donde.</p>
+
+<div class="panel">
+  <form class="filtros" method="get" action="/historial">
+    <div class="campo">
+      <label for="origen">Origen</label>
+      <select name="origen" id="origen">
+        <option value="">Todos</option>
+        {% for f in ChangeSource %}
+          <option value="{{ f.name }}" {{ 'selected' if filtro_origen == f.name else '' }}>{{ f.value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="boton" type="submit">Filtrar</button>
+    <a class="boton secundario" href="/historial">Limpiar</a>
+  </form>
+</div>
+
+<div class="panel">
+  {% if cambios %}
+  <div class="tabla-envoltura">
+    <table>
+      <thead><tr><th>Cuando (UTC)</th><th>Orden</th><th>Proveedor</th><th>Origen</th>
+                 <th>Quien</th><th>Campo</th><th>Antes</th><th>Despues</th></tr></thead>
+      <tbody>
+        {% for c in cambios %}
+        <tr>
+          <td>{{ c.changed_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td><a href="/ordenes/{{ c.order_id }}">{{ c.order.po_number }}-{{ c.order.line_number }}</a></td>
+          <td>{{ c.order.supplier.name if c.order and c.order.supplier else '—' }}</td>
+          <td>
+            {% if c.source.name == 'PROVEEDOR' %}<span class="etiqueta info">{{ c.source.value }}</span>
+            {% else %}<span class="etiqueta">{{ c.source.value }}</span>{% endif %}
+          </td>
+          <td>{{ c.actor or '—' }}</td>
+          <td>{{ c.field }}</td>
+          <td class="envuelve">{{ c.old_value if c.old_value is not none else '—' }}</td>
+          <td class="envuelve">{{ c.new_value if c.new_value is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="vacio">Todavia no hay movimientos registrados.</p>
+  {% endif %}
+</div>
+{% endblock %}

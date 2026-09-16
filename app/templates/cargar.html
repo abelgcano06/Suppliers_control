@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block titulo %}Cargar reporte · {{ settings.app_title }}{% endblock %}
+
+{% block contenido %}
+<h1>Cargar el reporte de ordenes abiertas</h1>
+<p class="subtitulo">
+  Sube el Excel que baja del sistema de compras. El portal lo valida, actualiza la base de datos
+  y deja intactos el status, la fecha promesa y el comentario que capturaron los proveedores.
+</p>
+
+{% if error %}
+  <div class="mensaje error"><strong>No se proceso el archivo.</strong><br>{{ error }}</div>
+{% endif %}
+
+{% if resultado %}
+  <div class="mensaje {{ 'exito' if resultado.ok else 'aviso' }}">
+    <strong>Carga #{{ resultado.batch_id }} procesada.</strong>
+    {{ resultado.rows_total }} fila{{ 's' if resultado.rows_total != 1 else '' }} leidas:
+    {{ resultado.rows_created }} altas, {{ resultado.rows_updated }} actualizadas,
+    {{ resultado.rows_unchanged }} sin cambio, {{ resultado.rows_rejected }} rechazadas.
+    {{ resultado.orders_closed }} orden{{ 'es' if resultado.orders_closed != 1 else '' }} cerradas.
+    {% if resultado.suppliers_created %}
+      {{ resultado.suppliers_created }} proveedor{{ 'es' if resultado.suppliers_created != 1 else '' }}
+      dado{{ 's' if resultado.suppliers_created != 1 else '' }} de alta automaticamente —
+      <a href="/proveedores">asignales su lista de SharePoint</a>.
+    {% endif %}
+    {% if resultado.ignored_columns %}
+      <br><small>Columnas del archivo que el portal no usa:
+      {{ resultado.ignored_columns|join(', ') }}.</small>
+    {% endif %}
+    {% if resultado.errors %}
+      <ul class="lista-errores">
+        {% for e in resultado.errors[:25] %}<li>{{ e }}</li>{% endfor %}
+        {% if resultado.errors|length > 25 %}
+          <li>… y {{ resultado.errors|length - 25 }} problema(s) mas.</li>
+        {% endif %}
+      </ul>
+    {% endif %}
+  </div>
+{% endif %}
+
+<div class="rejilla-dos">
+  <div class="panel">
+    <h2>Nueva carga</h2>
+    <form method="post" action="/cargar" enctype="multipart/form-data">
+      <div class="campo" style="margin-bottom:12px">
+        <label for="archivo">Archivo .xlsx del reporte</label>
+        <input type="file" name="archivo" id="archivo" accept=".xlsx,.xlsm" required>
+      </div>
+      <div class="campo" style="margin-bottom:12px">
+        <label for="cargado_por">Quien carga (para el historial)</label>
+        <input type="text" name="cargado_por" id="cargado_por" placeholder="Nombre o numero de empleado">
+      </div>
+      <div class="campo" style="margin-bottom:12px">
+        <label for="alcance_cierre">Que hacer con las ordenes que ya no aparecen</label>
+        <select name="alcance_cierre" id="alcance_cierre">
+          <option value="suppliers_in_file">Cerrarlas solo en los proveedores de este archivo (recomendado)</option>
+          <option value="all">Cerrarlas en todos — el archivo trae TODAS las ordenes abiertas</option>
+          <option value="none">No cerrar ninguna</option>
+        </select>
+      </div>
+      <div class="campo checkbox" style="margin-bottom:16px">
+        <input type="checkbox" name="alta_automatica" id="alta_automatica" value="true" checked>
+        <label for="alta_automatica">Dar de alta automaticamente los proveedores nuevos</label>
+      </div>
+      <button class="boton" type="submit">Procesar reporte</button>
+      <a class="boton secundario" href="/plantilla.csv">Descargar plantilla</a>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Columnas que espera el portal</h2>
+    <p class="subtitulo" style="margin-bottom:12px">
+      El encabezado puede estar en cualquiera de las primeras 15 filas y los nombres se comparan
+      sin acentos ni mayusculas. Obligatorias: <strong>Orden</strong> y <strong>Linea</strong>.
+    </p>
+    <div class="tabla-envoltura">
+      <table>
+        <thead><tr><th>Campo</th><th>Encabezados aceptados</th></tr></thead>
+        <tbody>
+          <tr><td>Orden *</td><td>Orden, OC, PO, Numero Orden, Documento</td></tr>
+          <tr><td>Linea *</td><td>Linea, Partida, Posicion, Item</td></tr>
+          <tr><td>Proveedor</td><td>Codigo Proveedor, Proveedor, Vendor</td></tr>
+          <tr><td>Parte</td><td>Parte, Numero Parte, Material, SKU</td></tr>
+          <tr><td>Descripcion</td><td>Descripcion, Detalle, Concepto</td></tr>
+          <tr><td>Cantidad</td><td>Cantidad, Qty</td></tr>
+          <tr><td>Unidad</td><td>Unidad, UM, UOM</td></tr>
+          <tr><td>Precio</td><td>Precio, Precio Unitario, Costo</td></tr>
+          <tr><td>Moneda</td><td>Moneda, Currency, Divisa</td></tr>
+          <tr><td>Fecha requerida</td><td>Fecha Requerida, Fecha Entrega, Due Date</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Cargas anteriores</h2>
+  {% if cargas %}
+  <div class="tabla-envoltura">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Fecha (UTC)</th><th>Archivo</th><th>Cargo</th>
+            <th>Filas</th><th>Altas</th><th>Actualizadas</th><th>Rechazadas</th>
+            <th>Cerradas</th><th>Resultado</th></tr>
+      </thead>
+      <tbody>
+        {% for c in cargas %}
+        <tr>
+          <td>{{ c.id }}</td>
+          <td>{{ c.uploaded_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td class="envuelve">{{ c.filename }}</td>
+          <td>{{ c.uploaded_by or '—' }}</td>
+          <td class="numero">{{ c.rows_total }}</td>
+          <td class="numero">{{ c.rows_created }}</td>
+          <td class="numero">{{ c.rows_updated }}</td>
+          <td class="numero">{{ c.rows_rejected }}</td>
+          <td class="numero">{{ c.orders_closed }}</td>
+          <td>
+            {% if c.rows_rejected %}
+              <span class="etiqueta aviso">Con rechazos</span>
+            {% else %}
+              <span class="etiqueta bien">Limpia</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if c.error_log %}
+        <tr><td colspan="10" class="envuelve">
+          <details class="proveedor">
+            <summary>Ver los {{ c.rows_rejected }} problema(s) de esta carga</summary>
+            <ul class="lista-errores">
+              {% for linea in c.error_log.split('\n')[:25] %}<li>{{ linea }}</li>{% endfor %}
+            </ul>
+          </details>
+        </td></tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="vacio">Todavia no hay cargas registradas.</p>
+  {% endif %}
+</div>
+{% endblock %}
